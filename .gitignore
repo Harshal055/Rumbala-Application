@@ -1,0 +1,25 @@
+# Dependencies and local caches
+node_modules/
+.expo/
+
+# Local secrets
+.env
+*.keystore
+*.jks
+
+# Native build outputs / generated artifacts
+android/
+ios/
+
+# Legacy backend (app now uses Supabase directly)
+backend/
+
+# Misc local artifacts
+com.facebook.react.devsupport.MultipartStreamReader
+
+# SECRETS - DO NOT PUSH
+key.txt
+FINAL_RELEASE_KEY_INFO.txt
+google-services.json
+.env*
+! .env.example
