@@ -3,6 +3,16 @@
 
 Rumbala is a high-performance React Native application designed for couples to deepen their connection through interactive dares, daily questions, and real-time synchronized play. Whether you're in the same room or thousands of miles apart, Rumbala bridges the gap with a premium, glassmorphic UI and seamless real-time technology.
 
+## 📱 App Gameplay
+
+<div align="center">
+  <img src="assets/screenshots/home.png" width="180" />
+  <img src="assets/screenshots/daily.png" width="180" />
+  <img src="assets/screenshots/ldr.png" width="180" />
+  <img src="assets/screenshots/shop.png" width="180" />
+  <img src="assets/screenshots/profile.png" width="180" />
+</div>
+
 ## 🚀 Key Features
 
 ### 📡 LDR Mode (Long-Distance Relationship)
