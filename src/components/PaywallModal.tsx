@@ -10,6 +10,7 @@ import LegalModal from './LegalModal';
 import { glassStyles, glassTokens } from '../constants/glass';
 import { getOfferings } from '../services/revenueCatService';
 import { PurchasesPackage } from 'react-native-purchases';
+import { PAYWALL_FEATURES, resolvePlanPackages, getPackageKind } from '../constants/pricing';
 
 const { width, height } = Dimensions.get('window');
 
@@ -18,13 +19,6 @@ interface PaywallModalProps {
     onClose: () => void;
     onSubscribe: (pkg: PurchasesPackage) => void;
 }
-
-const FEATURES = [
-    { id: '1', text: 'Unlimited Dare Cards', icon: 'checkmark-circle' },
-    { id: '2', text: 'Exclusive LDR Features', icon: 'checkmark-circle' },
-    { id: '3', text: 'Ad-free Experience', icon: 'checkmark-circle' },
-    { id: '4', text: 'Cloud Storage for Memories', icon: 'checkmark-circle' },
-];
 
 export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallModalProps) {
     const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
@@ -41,18 +35,30 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
 
     const loadOfferings = async () => {
         setLoading(true);
-        const offerings = await getOfferings();
-        const currentOffering = offerings?.current || offerings;
-        
-        if (currentOffering?.availablePackages) {
-            const availPkgs = currentOffering.availablePackages;
-            setPackages(availPkgs);
-            
-            // Default to annual if available, otherwise first one
-            const annual = availPkgs.find((p: any) => p.packageType === 'ANNUAL');
-            setSelectedPackage(annual || availPkgs[0]);
+        try {
+            const offerings = await getOfferings();
+            const currentOffering = offerings?.current || offerings;
+
+            if (currentOffering?.availablePackages) {
+                const allPackages: PurchasesPackage[] = currentOffering.availablePackages;
+                const planPackages = allPackages.filter((pkg) => {
+                    const kind = getPackageKind(pkg);
+                    return kind === 'annual' || kind === 'monthly';
+                });
+                setPackages(planPackages);
+
+                const { annual, monthly } = resolvePlanPackages(planPackages);
+                setSelectedPackage(annual || monthly || planPackages[0] || null);
+            } else {
+                setPackages([]);
+                setSelectedPackage(null);
+            }
+        } catch {
+            setPackages([]);
+            setSelectedPackage(null);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const handleSubscribe = () => {
@@ -126,12 +132,12 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
                             <Text style={s.subtitle}>Elevate your connection with Rumbala Pro</Text>
 
                             <View style={s.featureList}>
-                                {FEATURES.map(f => (
+                                {PAYWALL_FEATURES.map(f => (
                                     <View key={f.id} style={s.featureItem}>
                                         <LinearGradient colors={['#FF66B2', '#FF8ED4']} style={s.checkCircle} start={{x:0, y:0}} end={{x:1, y:1}}>
                                             <Ionicons name="checkmark-sharp" size={12} color="#fff" />
                                         </LinearGradient>
-                                        <Text style={s.featureText}>{f.text}</Text>
+                                        <Text style={s.featureText}>{f.title}</Text>
                                     </View>
                                 ))}
                             </View>

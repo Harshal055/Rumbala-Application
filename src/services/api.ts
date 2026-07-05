@@ -51,6 +51,10 @@ export const signupV2 = async (email: string, password: string) => {
     }
     if (!data.user) throw new Error('Registration could not be completed. Please try again.');
 
+    if (data.session) {
+        await postAuthSync(data.user.id, data.user.email || undefined);
+    }
+
     const needsEmailConfirmation = !data.session;
 
     return {
@@ -157,6 +161,18 @@ export const refreshAccessToken = async () => {
     return { access_token: data.session?.access_token };
 };
 
+export const resetPasswordV2 = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+
+    const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail);
+    if (error) {
+        throw new Error(error.message || 'Failed to send password reset email.');
+    }
+};
+
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
 
 export const getProfile = async (userId: string) => {
@@ -178,8 +194,7 @@ export const ensureProfileExists = async (userId: string, email?: string) => {
             .upsert({ 
                 id: userId, 
                 email: email || '',
-                card_count: 5, // starting cards
-                vibe: 'fun'
+                card_count: 5 // starting cards
             })
             .select()
             .single();
@@ -191,7 +206,7 @@ export const ensureProfileExists = async (userId: string, email?: string) => {
 
 export const updateProfile = async (
     userId: string,
-    updates: { partner1?: string; partner2?: string; vibe?: string; card_count?: number },
+    updates: { partner1?: string; partner2?: string; card_count?: number },
 ) => {
     const { data, error } = await supabase
         .from('profiles')
@@ -288,8 +303,13 @@ export const getPurchaseHistory = async (userId: string, limit = 50, offset = 0)
 // ─── ROOMS ────────────────────────────────────────────────────────────────────
 
 export const createRoom = async (hostUserId: string, hostName: string, roomType: 'video' | 'normal' = 'video') => {
-    const roomCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    console.log('--- CREATING ROOM:', roomCode, 'for host:', hostUserId);
+    // Simple alphanumeric code generation (avoiding ambiguous O/0 and I/1 if possible)
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No O, 0, I, 1
+    let roomCode = '';
+    for (let i = 0; i < 6; i++) roomCode += chars.charAt(Math.floor(Math.random() * chars.length));
+    
+    console.log('--- ATTEMPTING ROOM CREATE:', roomCode, 'for host:', hostUserId);
+    
     const { data, error } = await supabase
         .from('rooms')
         .insert({
@@ -297,57 +317,83 @@ export const createRoom = async (hostUserId: string, hostName: string, roomType:
             host_user_id: hostUserId,
             host_name: hostName,
             room_type: roomType,
-            current_turn_user_id: hostUserId, // Host starts
+            current_turn_user_id: hostUserId, 
             current_card: null,
             host_score: 0,
             guest_score: 0,
             is_active: true,
         })
         .select()
-        .single();
-    if (error) throw new Error(error.message);
+        .maybeSingle();
+
+    if (error) {
+        console.error('SUPABASE CREATE ERROR:', error.code, error.message, error.details);
+        throw new Error(`DB Error: ${error.message} (Is RLS enabled without an INSERT policy?)`);
+    }
+    
+    if (!data) {
+        console.error('CREATE FAILED: No data returned. RLS IS LIKELY BLOCKING SELECT AFTER INSERT.');
+        // We still return a valid object to avoid a full crash, but we warn heavily
+        return { code: roomCode, host_user_id: hostUserId, is_active: true }; 
+    }
+
+    console.log('--- ROOM CREATED SUCCESS:', data.code);
     return data;
 };
 
 export const joinRoom = async (roomCode: string, guestUserId: string, guestName: string) => {
-    // 1. Fetch room using MAYBE single to handle errors gracefully
-    const { data: room, error: fetchError } = await supabase
-        .from('rooms')
-        .select('*')
-        .eq('code', roomCode)
-        .maybeSingle();
-
-    if (fetchError) {
-        console.error('Supabase fetch error during join:', fetchError);
-        throw new Error(`Connection error: ${fetchError.message}`);
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
+    console.log('--- BLIND JOIN ATTEMPT:', roomCode, 'for user:', guestUserId);
+    
+    // Validate UUID to prevent PostgREST filter injection
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(guestUserId)) {
+        throw new Error('Invalid user ID format');
     }
     
-    if (!room) {
-        throw new Error('Room not found. Please check the code.');
-    }
-
-    if (!room.is_active) {
-        throw new Error('This room session has already ended.');
-    }
-
-    // Allow re-joining if it's the same guest, otherwise block
-    if (room.guest_user_id && room.guest_user_id !== guestUserId) {
-        throw new Error('This room is already full.');
-    }
-
-    // 2. Perform join
-    const { data, error: updateError } = await supabase
+    // We attempt an update directly. We check:
+    // 1. code matches
+    // 2. is_active is true
+    // 3. guest_user_id is either NULL or the same guest (re-join)
+    const { data, error, count } = await supabase
         .from('rooms')
         .update({ guest_user_id: guestUserId, guest_name: guestName })
         .eq('code', roomCode)
+        .eq('is_active', true)
+        .or(`guest_user_id.is.null,guest_user_id.eq.${guestUserId}`)
         .select()
-        .single();
+        .maybeSingle();
 
-    if (updateError) throw new Error(updateError.message);
+    if (error) {
+        console.error('SUPABASE BLIND JOIN ERROR:', error);
+        throw new Error(`Join failure: ${error.message}`);
+    }
+
+    // If update affected NO rows, we need to know WHY.
+    if (!data) {
+        console.warn('BLIND JOIN FAILED: No record updated. Checking why...');
+        
+        // Final fallback: Is the room already full or non-existent?
+        const { data: check } = await supabase
+            .from('rooms')
+            .select('guest_user_id, is_active')
+            .eq('code', roomCode)
+            .maybeSingle();
+            
+        if (!check) throw new Error(`Room "${roomCode}" not found. (Is RLS enabled on Supabase?)`);
+        if (!check.is_active) throw new Error('Meeting has ended.');
+        if (check.guest_user_id && check.guest_user_id !== guestUserId) throw new Error('Room is full.');
+        
+        console.warn('POSSIBLE RLS BLOCK on join return, but room should exist.');
+        return { code: roomCode, guest_user_id: guestUserId };
+    }
+
+    console.log('--- BLIND JOIN SUCCESS:', data.code);
     return data;
 };
 
 export const getRoomData = async (roomCode: string) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { data, error } = await supabase
         .from('rooms')
         .select('*')
@@ -360,6 +406,7 @@ export const getRoomData = async (roomCode: string) => {
 };
 
 export const syncCard = async (roomCode: string, card: any) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { data, error } = await supabase
         .from('rooms')
         .update({ current_card: card })
@@ -371,6 +418,7 @@ export const syncCard = async (roomCode: string, card: any) => {
 };
 
 export const updateRoomScores = async (roomCode: string, hostScore: number, guestScore: number, nextTurnUserId?: string) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { data, error } = await supabase
         .from('rooms')
         .update({ host_score: hostScore, guest_score: guestScore, current_turn_user_id: nextTurnUserId })
@@ -382,6 +430,7 @@ export const updateRoomScores = async (roomCode: string, hostScore: number, gues
 };
 
 export const deleteRoomV2 = async (roomCode: string) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { error } = await supabase.from('rooms').delete().eq('code', roomCode);
     if (error) throw new Error(error.message);
     return { success: true };
@@ -395,6 +444,7 @@ export const sendMessage = async (
     sender: string,
     text: string,
 ) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { data, error } = await supabase
         .from('room_messages')
         .insert({ room_code: roomCode, sender_user_id: senderUserId, sender, text })
@@ -405,6 +455,7 @@ export const sendMessage = async (
 };
 
 export const getMessages = async (roomCode: string, limit = 50, offset = 0) => {
+    roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
     const { data, error } = await supabase
         .from('room_messages')
         .select('*')
@@ -426,7 +477,7 @@ export const addPoints = async (
         .from('game_scores')
         .select('partner1, partner2')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
 
     if (fetchError && fetchError.code === 'PGRST116') {
         // Row does not exist yet — create it
@@ -438,7 +489,7 @@ export const addPoints = async (
                 partner2: winner === 'partner2' || winner === 'both' ? points : 0,
             })
             .select()
-            .single();
+            .maybeSingle();
         if (error) throw new Error(error.message);
         return data;
     }
@@ -447,19 +498,19 @@ export const addPoints = async (
     const updates = {
         partner1:
             winner === 'partner1' || winner === 'both'
-                ? (current.partner1 ?? 0) + points
-                : current.partner1,
+                ? (current?.partner1 ?? 0) + points
+                : current?.partner1 ?? 0,
         partner2:
             winner === 'partner2' || winner === 'both'
-                ? (current.partner2 ?? 0) + points
-                : current.partner2,
+                ? (current?.partner2 ?? 0) + points
+                : current?.partner2 ?? 0,
     };
     const { data, error } = await supabase
         .from('game_scores')
         .update(updates)
         .eq('user_id', userId)
         .select()
-        .single();
+        .maybeSingle();
     if (error) throw new Error(error.message);
     return data;
 };
@@ -470,7 +521,7 @@ export const getScores = async (userId: string) => {
         .from('game_scores')
         .select('*')
         .eq('user_id', userId)
-        .single();
+        .maybeSingle();
     if (error) throw new Error(error.message);
     return data;
 };
@@ -481,7 +532,7 @@ export const getGameStats = async (userId: string) => {
             .from('game_scores')
             .select('partner1, partner2')
             .eq('user_id', userId)
-            .single(),
+            .maybeSingle(),
         supabase
             .from('game_history')
             .select('id', { count: 'exact', head: true })
@@ -490,7 +541,7 @@ export const getGameStats = async (userId: string) => {
             .from('profiles')
             .select('card_count')
             .eq('id', userId)
-            .single(),
+            .maybeSingle(),
     ]);
 
     const scores = scoresResult.data || { partner1: 0, partner2: 0 };
@@ -750,6 +801,23 @@ export const adminGetBugReports = async () => {
 
 export const adminUpdateBugStatus = async (id: string, status: string) => {
     const { error } = await supabase.from('bug_reports').update({ status }).eq('id', id);
+    if (error) throw new Error(error.message);
+};
+
+// ─── ADMIN CRASH REPORTS ────────────────────────────────────────────────────
+
+export const adminGetCrashReports = async (limit = 50) => {
+    const { data, error } = await supabase
+        .from('crash_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const adminUpdateCrashStatus = async (id: string, status: string) => {
+    const { error } = await supabase.from('crash_reports').update({ status }).eq('id', id);
     if (error) throw new Error(error.message);
 };
 

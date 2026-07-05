@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, StatusBar, Alert, ActivityIndicator, Platform, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Modal, StatusBar, Alert, ActivityIndicator, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useStore } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
-import { getOfferings, purchasePackage } from '../../src/services/revenueCatService';
+import { getOfferings, purchasePackage, getCustomerInfo, checkProEntitlement } from '../../src/services/revenueCatService';
 import { PurchasesPackage } from 'react-native-purchases';
 import LottieView from 'lottie-react-native';
 import { useRouter } from 'expo-router';
@@ -15,46 +15,64 @@ import PaywallModal from '../../src/components/PaywallModal';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../../src/constants/glass';
 
-const { width } = Dimensions.get('window');
 
 const BG_COLORS = ['#FFF5F5', '#FFF0F5', '#F5F5FF']; // Premium romantic base
 
-// Static pack display data (used before offerings load)
-const PACKS = [
-    {
-        productId: 'dare_card_1', title: 'Single Dare', subtitle: 'Perfect for one more laugh',
-        fallbackPrice: '₹5', count: 1, icon: '⭐', badge: null, badgeColor: '',
-        colors: ['rgba(255, 107, 157, 0.2)', 'rgba(233, 30, 140, 0.2)'] as const, iconName: 'star' as const,
-    },
-    {
-        productId: 'dare_card_5', title: '5-Pack', subtitle: 'Save ₹6 • Most popular',
-        fallbackPrice: '₹19', count: 5, icon: '🔥', badge: 'BEST VALUE', badgeColor: '#10B981',
-        colors: ['rgba(255, 145, 66, 0.2)', 'rgba(230, 81, 0, 0.2)'] as const, iconName: 'flame' as const,
-    },
-    {
-        productId: 'dare_card_10', title: '10-Pack', subtitle: 'Save ₹11 on dares',
-        fallbackPrice: '₹39', count: 10, icon: '💎', badge: 'POPULAR', badgeColor: '#8B5CF6',
-        colors: ['rgba(124, 77, 255, 0.2)', 'rgba(69, 39, 160, 0.2)'] as const, iconName: 'diamond' as const,
-    },
-    {
-        productId: 'dare_card_25', title: '25-Pack', subtitle: 'Unlimited vibes for weeks',
-        fallbackPrice: '₹89', count: 25, icon: '👑', badge: 'LEGENDARY', badgeColor: '#F59E0B',
-        colors: ['rgba(255, 179, 0, 0.2)', 'rgba(230, 81, 0, 0.2)'] as const, iconName: 'trophy' as const,
-    },
-];
+// Helper mapping for dynamic rendering
+const GET_META = (pkg: PurchasesPackage) => {
+    const id = pkg.product.identifier.toLowerCase();
+    const type = pkg.packageType;
 
-const SUBSCRIPTIONS = [
-    {
-        productId: 'Rumbala_pro_monthly', title: 'Monthly Pro', subtitle: 'Full access + Unlimited dares',
-        fallbackPrice: '₹99/mo', icon: '✨', badge: null, badgeColor: '',
-        colors: ['rgba(71, 118, 230, 0.15)', 'rgba(142, 84, 233, 0.15)'] as const, iconName: 'calendar' as const,
-    },
-    {
-        productId: 'Rumbala_pro_yearly', title: 'Annual Pro', subtitle: 'Save 40% • Best for couples',
-        fallbackPrice: '₹599/yr', icon: '🚀', badge: 'BEST DEAL', badgeColor: '#10B981',
-        colors: ['rgba(255, 95, 109, 0.15)', 'rgba(255, 195, 113, 0.15)'] as const, iconName: 'rocket' as const,
-    },
-];
+    if (type === 'ANNUAL' || id.includes('year') || id.includes('annual')) {
+        return {
+            title: 'Annual Pro', subtitle: 'Save 40% • Best for couples',
+            icon: '🚀', badge: 'BEST DEAL', badgeColor: '#10B981', iconName: 'rocket' as const,
+            colors: ['rgba(255, 95, 109, 0.15)', 'rgba(255, 195, 113, 0.15)'] as const,
+        };
+    }
+    if (type === 'MONTHLY' || id.includes('month')) {
+        return {
+            title: 'Monthly Pro', subtitle: 'Full access + Unlimited dares',
+            icon: '✨', badge: null, badgeColor: '', iconName: 'calendar' as const,
+            colors: ['rgba(71, 118, 230, 0.15)', 'rgba(142, 84, 233, 0.15)'] as const,
+        };
+    }
+    if (id.includes('card_25')) {
+        return {
+            title: '25-Pack', subtitle: 'Unlimited vibes for weeks',
+            icon: '👑', badge: 'LEGENDARY', badgeColor: '#F59E0B', iconName: 'trophy' as const,
+            colors: ['rgba(255, 179, 0, 0.2)', 'rgba(230, 81, 0, 0.2)'] as const,
+        };
+    }
+    if (id.includes('card_10')) {
+        return {
+            title: '10-Pack', subtitle: 'Save ₹11 on dares',
+            icon: '💎', badge: 'POPULAR', badgeColor: '#8B5CF6', iconName: 'diamond' as const,
+            colors: ['rgba(124, 77, 255, 0.2)', 'rgba(69, 39, 160, 0.2)'] as const,
+        };
+    }
+    if (id.includes('card_5') || id.includes('5_pack')) {
+        return {
+            title: '5-Pack', subtitle: 'Get 5 more dares to spice up the night',
+            icon: '🔥', badge: 'BEST VALUE', badgeColor: '#10B981', iconName: 'flame' as const,
+            colors: ['rgba(255, 145, 66, 0.2)', 'rgba(230, 81, 0, 0.2)'] as const,
+        };
+    }
+    if (id.includes('card_1')) {
+        return {
+            title: 'Single Dare', subtitle: 'Perfect for one more laugh',
+            icon: '⭐', badge: null, badgeColor: '', iconName: 'star' as const,
+            colors: ['rgba(255, 107, 157, 0.2)', 'rgba(233, 30, 140, 0.2)'] as const,
+        };
+    }
+    // Default fallback for any other package discovered
+    return {
+        title: pkg.product.title.replace(' (Rumbala)', ''),
+        subtitle: pkg.product.description || 'Premium access',
+        icon: '⭐', badge: null, badgeColor: '', iconName: 'star' as const,
+        colors: ['rgba(255, 107, 157, 0.2)', 'rgba(233, 30, 140, 0.2)'] as const,
+    };
+};
 
 const getNextMonday = () => {
     const today = new Date();
@@ -85,27 +103,30 @@ export default function ShopScreen() {
     }, []);
 
     const loadOfferings = async () => {
-        const offerings = await getOfferings();
-        const offering = offerings?.current || offerings;
-        if (offering?.availablePackages) {
-            setPackages(offering.availablePackages);
+        try {
+            const offerings = await getOfferings();
+            const offering = offerings?.current || offerings;
+            if (offering?.availablePackages) {
+                setPackages(offering.availablePackages);
+            } else {
+                setPackages([]);
+            }
+        } catch (e: any) {
+            setPackages([]);
+            showAlert('Shop Unavailable', e?.message || 'Unable to load store offerings right now.');
+        } finally {
+            setOfferingsLoaded(true);
         }
-        setOfferingsLoaded(true);
     };
 
     const findPackage = (productId: string): PurchasesPackage | undefined => {
         return packages.find(p => p.product.identifier === productId);
     };
 
-    const getPrice = (productId: string, fallbackPrice: string): string => {
-        const pkg = findPackage(productId);
-        return pkg?.product.priceString || fallbackPrice;
-    };
-
     const handlePurchase = async (param: string | PurchasesPackage) => {
         if (loadingSku) return;
         const productId = typeof param === 'string' ? param : param.product.identifier;
-        
+
         if (!userId) {
             showAlert('Sign In Required', 'Please sign in to buy dare cards.', [
                 { text: 'Log In', onPress: () => router.push('/login') },
@@ -119,22 +140,43 @@ export default function ShopScreen() {
             return;
         }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        setLoadingSku(productId);
-        const result = await purchasePackage(pkg);
-        setLoadingSku(null);
-        if (result.success) {
-            const isSub = SUBSCRIPTIONS.some(s => s.productId === productId);
-            const title = isSub ? 'Subscription Active! 👑' : 'Cards Added! 🎉';
-            const message = isSub ? 'Welcome to Rumbala Pro! You now have unlimited access.' : `Success! We've added ${result.cardsAdded || 0} dare cards to your deck.`;
-            
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            showAlert(title, message, [
-                { text: 'Great!', onPress: () => router.replace('/(tabs)') }
-            ]);
-        } else if (result.error && result.error !== 'Purchase cancelled') {
-            showAlert('Purchase Failed 😔', result.error);
+        try {
+            setLoadingSku(productId);
+            const result = await purchasePackage(pkg);
+            if (result.success) {
+                const isSub = pkg.packageType !== 'CUSTOM' && pkg.packageType !== 'UNKNOWN';
+
+                if (isSub) {
+                    const info = await getCustomerInfo();
+                    const hasPro = checkProEntitlement(info);
+                    setIsPro(hasPro);
+
+                    if (!hasPro) {
+                        showAlert('Purchase Pending', 'Your subscription was processed, but Pro is still syncing. Please reopen the app or tap Restore Purchases.');
+                        return;
+                    }
+                }
+
+                const title = isSub ? 'Subscription Active! 👑' : 'Cards Added! 🎉';
+                const message = isSub ? 'Welcome to Rumbala Pro! You now have unlimited access.' : `Success! We've added ${result.cardsAdded || 0} dare cards to your deck.`;
+
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                showAlert(title, message, [
+                    { text: 'Great!', onPress: () => router.replace('/(tabs)') }
+                ]);
+            } else if (result.error && result.error !== 'Purchase cancelled') {
+                showAlert('Purchase Failed 😔', result.error);
+            }
+        } catch (e: any) {
+            showAlert('Purchase Failed 😔', e?.message || 'We could not complete your purchase. Please try again.');
+        } finally {
+            setLoadingSku(null);
         }
     };
+
+    const displayedPackages = (viewMode === 'pro'
+        ? packages.filter(p => p.packageType !== 'CUSTOM' && p.packageType !== 'UNKNOWN')
+        : packages.filter(p => p.packageType === 'CUSTOM' || p.packageType === 'UNKNOWN'));
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
@@ -151,15 +193,15 @@ export default function ShopScreen() {
 
                     {/* Tab Switcher */}
                     <Animated.View entering={FadeInDown.delay(50).duration(500)} style={[styles.tabSwitcher, glassStyles.container]}>
-                        <TouchableOpacity 
-                            style={[styles.tabBtn, viewMode === 'pro' && styles.tabBtnActive]} 
+                        <TouchableOpacity
+                            style={[styles.tabBtn, viewMode === 'pro' && styles.tabBtnActive]}
                             onPress={() => { Haptics.selectionAsync(); setViewMode('pro'); }}
                         >
                             <Ionicons name="sparkles" size={16} color={viewMode === 'pro' ? '#fff' : '#666'} />
                             <Text style={[styles.tabBtnText, viewMode === 'pro' && styles.tabBtnTextActive]}>Monthly & Annual</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity 
-                            style={[styles.tabBtn, viewMode === 'packs' && styles.tabBtnActive]} 
+                        <TouchableOpacity
+                            style={[styles.tabBtn, viewMode === 'packs' && styles.tabBtnActive]}
                             onPress={() => { Haptics.selectionAsync(); setViewMode('packs'); }}
                         >
                             <Ionicons name="albums" size={16} color={viewMode === 'packs' ? '#fff' : '#666'} />
@@ -188,8 +230,8 @@ export default function ShopScreen() {
                     {/* Pro Hero Card */}
                     {!isPro && viewMode === 'pro' && (
                         <Animated.View entering={FadeInDown.delay(120).duration(500)} style={styles.proHeroCard}>
-                            <LinearGradient 
-                                colors={['#1A111B', '#2A1D2D']} 
+                            <LinearGradient
+                                colors={['#1A111B', '#2A1D2D']}
                                 style={styles.proHeroGradient}
                                 start={{ x: 0, y: 0 }}
                                 end={{ x: 1, y: 1 }}
@@ -202,8 +244,8 @@ export default function ShopScreen() {
                                         <Text style={styles.proHeroTitle}>Unlock Rumbala Pro</Text>
                                         <Text style={styles.proHeroSubtitle}>Unlimited dares, cloud storage & more</Text>
                                     </View>
-                                    <TouchableOpacity 
-                                        style={styles.proHeroBtn} 
+                                    <TouchableOpacity
+                                        style={styles.proHeroBtn}
                                         onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setShowPaywall(true); }}
                                     >
                                         <Text style={styles.proHeroBtnText}>See All Perks</Text>
@@ -213,86 +255,64 @@ export default function ShopScreen() {
                         </Animated.View>
                     )}
 
-                    {/* Content based on Tab */}
-                    {viewMode === 'pro' ? (
-                        <>
-                            {SUBSCRIPTIONS.map((sub, i) => (
-                                <Animated.View key={sub.productId} entering={FadeInDown.delay(100 + i * 80).duration(500)} style={[styles.card, glassStyles.container]}>
-                                    <LinearGradient colors={sub.colors} style={styles.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                                        {sub.badge && (
-                                            <View style={[styles.badge, { backgroundColor: sub.badgeColor }]}>
-                                                <Text style={styles.badgeText}>{sub.badge}</Text>
-                                            </View>
-                                        )}
-                                        <Text style={styles.watermarkSub}>{sub.productId.includes('yearly') ? '🏆' : '✨'}</Text>
-                                        <View style={styles.cardContent}>
-                                            <View style={styles.cardLeft}>
-                                                <View style={styles.iconCircle}>
-                                                     <Ionicons name={sub.iconName} size={24} color="#FF6F43" />
-                                                </View>
-                                                <View>
-                                                    <Text style={styles.cardTitle}>{sub.title}</Text>
-                                                    <Text style={styles.cardSubtitle}>{sub.subtitle}</Text>
-                                                </View>
-                                            </View>
-                                            <TouchableOpacity
-                                                style={[styles.buyBtn, loadingSku === sub.productId && styles.buyBtnDisabled]}
-                                                onPress={() => handlePurchase(sub.productId)}
-                                                activeOpacity={0.85}
-                                                disabled={!!loadingSku}
-                                            >
-                                                {loadingSku === sub.productId ? (
-                                                    <ActivityIndicator size="small" color="#FF6F43" />
-                                                ) : (
-                                                    <Text style={styles.buyPrice}>{getPrice(sub.productId, sub.fallbackPrice)}</Text>
-                                                )}
-                                            </TouchableOpacity>
-                                        </View>
-                                    </LinearGradient>
-                                </Animated.View>
-                            ))}
-                        </>
+                    {/* Content Dynamic discovery from RevenueCat */}
+                    {(packages.length === 0 || displayedPackages.length === 0) && offeringsLoaded ? (
+                        <Animated.View entering={FadeInDown.delay(200)} style={styles.emptyOfferings}>
+                            <Ionicons name="cart-outline" size={64} color="#ddd" />
+                            <Text style={styles.emptyTitle}>Store Configuration Needed</Text>
+                            <Text style={styles.emptyText}>
+                                No {viewMode === 'pro' ? 'Subscription' : 'Dare Pack'} offerings found in the shop.
+                            </Text>
+                            <View style={styles.helpBox}>
+                                <Text style={styles.helpText}>1. Login to RevenueCat Dashboard</Text>
+                                <Text style={styles.helpText}>2. Go to your 'Current' Offering</Text>
+                                <Text style={styles.helpText}>3. Add your products as '{viewMode === 'pro' ? 'Monthly/Annual' : 'Custom'}' packages</Text>
+                                <Text style={styles.helpText}>4. Tap 'Reload Shop' below</Text>
+                            </View>
+                            <TouchableOpacity style={styles.reloadBtn} onPress={loadOfferings}>
+                                <Text style={styles.reloadBtnText}>Reload Shop</Text>
+                            </TouchableOpacity>
+                        </Animated.View>
                     ) : (
                         <>
-                            {/* Pack Cards */}
-                            {PACKS.map((pack, i) => (
-                                <Animated.View key={pack.productId} entering={FadeInDown.delay(100 + i * 80).duration(500)} style={[styles.card, glassStyles.container]}>
-                                    <LinearGradient colors={pack.colors} style={styles.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                                        {pack.badge && (
-                                            <View style={[styles.badge, { backgroundColor: pack.badgeColor }]}>
-                                                <Text style={styles.badgeText}>{pack.badge}</Text>
-                                            </View>
-                                        )}
-                                        <Text style={styles.watermark}>{pack.icon}</Text>
-                                        <View style={styles.cardContent}>
-                                            <View style={styles.cardLeft}>
-                                                <View style={styles.packIconWrap}>
-                                                    <Text style={styles.cardIcon}>{pack.icon}</Text>
+                            {displayedPackages.map((pkg, i) => {
+                                const meta = GET_META(pkg);
+                                return (
+                                    <Animated.View key={pkg.product.identifier} entering={FadeInDown.delay(100 + i * 80).duration(500)} style={[styles.card, glassStyles.container]}>
+                                        <LinearGradient colors={meta.colors} style={styles.cardGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                                            {meta.badge && (
+                                                <View style={[styles.badge, { backgroundColor: meta.badgeColor }]}>
+                                                    <Text style={styles.badgeText}>{meta.badge}</Text>
                                                 </View>
-                                                <View>
-                                                    <Text style={styles.cardTitle}>{pack.title}</Text>
-                                                    <Text style={styles.cardSubtitle}>{pack.subtitle}</Text>
+                                            )}
+                                            <Text style={styles.watermarkSub}>{meta.icon}</Text>
+                                            <View style={styles.cardContent}>
+                                                <View style={styles.cardLeft}>
+                                                    <View style={styles.iconCircle}>
+                                                        <Ionicons name={meta.iconName} size={24} color="#FF6F43" />
+                                                    </View>
+                                                    <View>
+                                                        <Text style={styles.cardTitle}>{meta.title}</Text>
+                                                        <Text style={styles.cardSubtitle}>{meta.subtitle}</Text>
+                                                    </View>
                                                 </View>
+                                                <TouchableOpacity
+                                                    style={[styles.buyBtn, loadingSku === pkg.product.identifier && styles.buyBtnDisabled]}
+                                                    onPress={() => handlePurchase(pkg)}
+                                                    activeOpacity={0.85}
+                                                    disabled={!!loadingSku}
+                                                >
+                                                    {loadingSku === pkg.product.identifier ? (
+                                                        <ActivityIndicator size="small" color="#FF6F43" />
+                                                    ) : (
+                                                        <Text style={styles.buyPrice}>{pkg.product.priceString}</Text>
+                                                    )}
+                                                </TouchableOpacity>
                                             </View>
-                                            <TouchableOpacity
-                                                style={[styles.buyBtn, loadingSku === pack.productId && styles.buyBtnDisabled]}
-                                                onPress={() => handlePurchase(pack.productId)}
-                                                activeOpacity={0.85}
-                                                disabled={!!loadingSku}
-                                            >
-                                                {loadingSku === pack.productId ? (
-                                                    <ActivityIndicator size="small" color="#FF6B35" />
-                                                ) : (
-                                                    <>
-                                                        <Text style={styles.buyPrice}>{getPrice(pack.productId, pack.fallbackPrice)}</Text>
-                                                        <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
-                                                    </>
-                                                )}
-                                            </TouchableOpacity>
-                                        </View>
-                                    </LinearGradient>
-                                </Animated.View>
-                            ))}
+                                        </LinearGradient>
+                                    </Animated.View>
+                                );
+                            })}
                         </>
                     )}
 
@@ -303,7 +323,7 @@ export default function ShopScreen() {
                     </Animated.View>
                 </ScrollView>
 
-                <PaywallModal 
+                <PaywallModal
                     visible={showPaywall}
                     onClose={() => setShowPaywall(false)}
                     onSubscribe={(pkg) => {
@@ -319,7 +339,7 @@ export default function ShopScreen() {
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
     scroll: { paddingTop: 20, paddingBottom: 100, paddingHorizontal: 20 },
-    
+
     tabSwitcher: {
         flexDirection: 'row', borderRadius: 16, padding: 4, marginBottom: 20, gap: 4,
     },
@@ -334,7 +354,7 @@ const styles = StyleSheet.create({
         fontFamily: 'Pacifico_400Regular', fontSize: 32, color: '#1a1a1a', marginBottom: 4,
         paddingRight: 10,
     },
-    headerSubtitle: { fontSize: 14, color: '#666', fontWeight: '500' },
+    headerSubtitle: { fontSize: 14, color: '#666', fontWeight: '500', lineHeight: 20 },
 
     // Info pill
     infoPill: {
@@ -342,7 +362,7 @@ const styles = StyleSheet.create({
         borderRadius: 16, paddingHorizontal: 16, paddingVertical: 14,
         marginBottom: 20,
     },
-    infoPillLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    infoPillLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 },
     infoPillText: { fontSize: 14, color: '#555' },
     infoPillBold: { fontWeight: '700', color: '#1a1a1a' },
     resetBadge: {
@@ -352,7 +372,7 @@ const styles = StyleSheet.create({
     resetText: { fontSize: 10, color: '#888', fontWeight: '600' },
 
     // Pro Hero
-    proHeroCard: { 
+    proHeroCard: {
         borderRadius: 20, marginBottom: 24, overflow: 'hidden', borderWidth: 1, borderColor: '#3A2D3D',
         shadowColor: 'rgba(255, 102, 178, 0.2)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 10, elevation: 0
     },
@@ -364,8 +384,8 @@ const styles = StyleSheet.create({
     proHeroBtn: { backgroundColor: '#FF66B2', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
     proHeroBtnText: { color: '#1A111B', fontSize: 13, fontWeight: '800' },
     bestValueBadgePro: {
-        position: 'absolute', top: -10, left: 16, 
-        backgroundColor: '#FF66B2', paddingHorizontal: 10, paddingVertical: 4, 
+        position: 'absolute', top: -10, left: 16,
+        backgroundColor: '#FF66B2', paddingHorizontal: 10, paddingVertical: 4,
         borderRadius: 20, zIndex: 5
     },
     bestValueTextPro: { fontSize: 10, fontWeight: '900', color: '#1A111B' },
@@ -387,12 +407,12 @@ const styles = StyleSheet.create({
     cardContent: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', zIndex: 1,
     },
-    cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1 },
+    cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 14, flex: 1, minWidth: 0 },
     packIconWrap: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,107,53,0.1)', alignItems: 'center', justifyContent: 'center' },
     iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,111,67,0.1)', alignItems: 'center', justifyContent: 'center' },
     cardIcon: { fontSize: 24 },
     cardTitle: { fontSize: 19, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
-    cardSubtitle: { fontSize: 12, color: '#666', fontWeight: '500' },
+    cardSubtitle: { fontSize: 12, color: '#666', fontWeight: '500', flexShrink: 1, lineHeight: 16 },
     buyBtn: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
         backgroundColor: '#fff', paddingHorizontal: 18, paddingVertical: 10, borderRadius: 14,
@@ -439,4 +459,12 @@ const styles = StyleSheet.create({
     errorBtnCancelText: { color: '#4B5563', fontSize: 15, fontWeight: '700' },
     errorBtnPrimary: { backgroundColor: '#FF6B35' },
     errorBtnPrimaryText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+
+    emptyOfferings: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, opacity: 0.9 },
+    emptyTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', marginTop: 16, marginBottom: 8 },
+    emptyText: { color: '#666', fontSize: 13, textAlign: 'center', marginBottom: 24, paddingHorizontal: 40, lineHeight: 20 },
+    helpBox: { backgroundColor: 'rgba(0,0,0,0.03)', padding: 16, borderRadius: 16, width: '100%', marginBottom: 24, borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc' },
+    helpText: { color: '#888', fontSize: 12, marginBottom: 6, fontWeight: '500' },
+    reloadBtn: { backgroundColor: '#FF6B35', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 14 },
+    reloadBtnText: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });

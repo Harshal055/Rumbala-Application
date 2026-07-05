@@ -126,7 +126,7 @@ export default function LoginScreen() {
                 <Animated.View 
                     entering={FadeInDown.delay(100).duration(600)} 
                     renderToHardwareTextureAndroid={true}
-                    style={[styles.header, glassStyles.container]}
+                    style={[styles.header, glassStyles.header]}
                 >
                     <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
                         <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
@@ -193,7 +193,7 @@ export default function LoginScreen() {
                                 </View>
                             </View>
 
-                            <TouchableOpacity style={styles.forgotBtn}>
+                            <TouchableOpacity style={styles.forgotBtn} onPress={() => router.push('/forgot-password')}>
                                 <Text style={styles.forgotText}>Forgot Password?</Text>
                             </TouchableOpacity>
 
@@ -214,26 +214,20 @@ export default function LoginScreen() {
                                 <View style={styles.line} />
                             </View>
 
-                            <View style={styles.socialRow}>
-                                <TouchableOpacity 
-                                    style={[styles.socialBtn, glassStyles.container, googleLoading && styles.socialBtnDisabled]} 
-                                    onPress={handleGoogleSignIn}
-                                    disabled={googleLoading}
-                                >
-                                    {googleLoading ? (
-                                        <ActivityIndicator size="small" color="#FF6B35" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="logo-google" size={20} color="#4285F4" />
-                                            <Text style={styles.socialBtnText}>Google</Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.socialBtn, glassStyles.container]}>
-                                    <Ionicons name="logo-facebook" size={20} color="#1877F2" />
-                                    <Text style={styles.socialBtnText}>Facebook</Text>
-                                </TouchableOpacity>
-                            </View>
+                            <TouchableOpacity 
+                                style={[styles.socialBtnFull, glassStyles.container, googleLoading && styles.socialBtnDisabled]} 
+                                onPress={handleGoogleSignIn}
+                                disabled={googleLoading}
+                            >
+                                {googleLoading ? (
+                                    <ActivityIndicator size="small" color="#FF6B35" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="logo-google" size={24} color="#4285F4" />
+                                        <Text style={styles.socialBtnTextFull}>Continue with Google</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
 
                             <TouchableOpacity style={styles.signupLink} onPress={() => router.push('/signup')}>
                                 <Text style={styles.signupText}>
@@ -278,10 +272,9 @@ const styles = StyleSheet.create({
     line: { flex: 1, height: 1.5, backgroundColor: 'rgba(0,0,0,0.05)' },
     dividerText: { fontSize: 13, color: '#999', fontWeight: '700' },
 
-    socialRow: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-    socialBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 52, borderRadius: 16, gap: 10, backgroundColor: 'rgba(255,255,255,0.4)' },
+    socialBtnFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.4)', gap: 12, marginBottom: 32 },
     socialBtnDisabled: { opacity: 0.6 },
-    socialBtnText: { fontSize: 15, fontWeight: '800', color: '#444' },
+    socialBtnTextFull: { fontSize: 16, fontWeight: '800', color: '#444' },
 
     signupLink: { alignSelf: 'center' },
     signupText: { fontSize: 15, color: '#666', fontWeight: '500' },

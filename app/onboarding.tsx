@@ -311,7 +311,7 @@ const styles = StyleSheet.create({
     avatar: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
     avatarAdd: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
 
-    primaryBtn: { backgroundColor: '#FF6B35', width: '100%', paddingVertical: 18, borderRadius: 18, alignItems: 'center', shadowColor: 'rgba(255, 107, 53, 0.4)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 0 },
+    primaryBtn: { backgroundColor: '#FF6B35', width: '100%', paddingVertical: 18, borderRadius: 18, alignItems: 'center', shadowColor: 'rgba(255, 107, 53, 0.4)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
     btnContent: { flexDirection: 'row', alignItems: 'center' },
     primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
     secondaryBtn: { marginTop: 24, alignSelf: 'center' },

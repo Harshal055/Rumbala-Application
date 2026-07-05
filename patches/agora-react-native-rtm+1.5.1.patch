@@ -1,0 +1,66 @@
+diff --git a/node_modules/agora-react-native-rtm/lib/commonjs/RtmEngine.js b/node_modules/agora-react-native-rtm/lib/commonjs/RtmEngine.js
+--- a/node_modules/agora-react-native-rtm/lib/commonjs/RtmEngine.js
++++ b/node_modules/agora-react-native-rtm/lib/commonjs/RtmEngine.js
+@@ -16,8 +16,13 @@
+ /**
+  * @ignore
+  */
+-const Prefix = AgoraRTM.prefix;
+-/**
+- * @ignore
+- */
+-const RtmClientEvent = new _reactNative.NativeEventEmitter(AgoraRTM);
++const Prefix = AgoraRTM ? AgoraRTM.prefix : '';
++/**
++ * @ignore
++ */
++const RtmClientEvent = AgoraRTM && typeof AgoraRTM.addListener === 'function' ? new _reactNative.NativeEventEmitter(AgoraRTM) : {
++  addListener: () => ({
++    remove: () => {}
++  }),
++  removeAllListeners: () => {}
++};
+diff --git a/node_modules/agora-react-native-rtm/lib/module/RtmEngine.js b/node_modules/agora-react-native-rtm/lib/module/RtmEngine.js
+--- a/node_modules/agora-react-native-rtm/lib/module/RtmEngine.js
++++ b/node_modules/agora-react-native-rtm/lib/module/RtmEngine.js
+@@ -18,8 +18,13 @@
+ /**
+  * @ignore
+  */
+-const Prefix = AgoraRTM.prefix;
+-/**
+- * @ignore
+- */
+-const RtmClientEvent = new NativeEventEmitter(AgoraRTM);
++const Prefix = AgoraRTM ? AgoraRTM.prefix : '';
++/**
++ * @ignore
++ */
++const RtmClientEvent = AgoraRTM && typeof AgoraRTM.addListener === 'function' ? new NativeEventEmitter(AgoraRTM) : {
++  addListener: () => ({
++    remove: () => {}
++  }),
++  removeAllListeners: () => {}
++};
+diff --git a/node_modules/agora-react-native-rtm/src/RtmEngine.ts b/node_modules/agora-react-native-rtm/src/RtmEngine.ts
+--- a/node_modules/agora-react-native-rtm/src/RtmEngine.ts
++++ b/node_modules/agora-react-native-rtm/src/RtmEngine.ts
+@@ -249,8 +249,13 @@
+ /**
+  * @ignore
+  */
+-const Prefix = AgoraRTM.prefix;
+-/**
+- * @ignore
+- */
+-const RtmClientEvent = new NativeEventEmitter(AgoraRTM);
++const Prefix = AgoraRTM ? AgoraRTM.prefix : '';
++/**
++ * @ignore
++ */
++const RtmClientEvent = AgoraRTM && typeof (AgoraRTM as any).addListener === 'function' ? new NativeEventEmitter(AgoraRTM) : {
++  addListener: () => ({
++    remove: () => {}
++  }),
++  removeAllListeners: () => {}
++} as any;

@@ -9,6 +9,7 @@
  */
 
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useStore } from '../store/useStore';
 import { addUserCards } from './api';
 
@@ -47,7 +48,7 @@ const MOCK_OFFERING = {
                 packageType: 'MONTHLY',
                 isMock: true,
                 product: {
-                    identifier: 'monthly_premium',
+                    identifier: 'monthly',
                     description: 'Full access to all features monthly',
                     title: 'Monthly Premium',
                     price: 9.99,
@@ -61,7 +62,7 @@ const MOCK_OFFERING = {
                 packageType: 'ANNUAL',
                 isMock: true,
                 product: {
-                    identifier: 'annual_premium',
+                    identifier: 'annual',
                     description: 'Full access to all features annually',
                     title: 'Annual Premium',
                     price: 59.99,
@@ -75,6 +76,45 @@ const MOCK_OFFERING = {
                         periodNumberOfUnits: 3,
                         cycles: 1
                     },
+                }
+            },
+            {
+                identifier: 'dare_card_5',
+                packageType: 'CUSTOM',
+                isMock: true,
+                product: {
+                    identifier: 'dare_card_5',
+                    description: 'Get 5 more dares to spice up the night',
+                    title: '5 Dare Cards',
+                    price: 1.99,
+                    priceString: '$1.99',
+                    currencyCode: 'USD',
+                }
+            },
+            {
+                identifier: 'dare_card_10',
+                packageType: 'CUSTOM',
+                isMock: true,
+                product: {
+                    identifier: 'dare_card_10',
+                    description: 'Unlock 10 dares and save 20%',
+                    title: '10 Dare Cards',
+                    price: 3.99,
+                    priceString: '$3.99',
+                    currencyCode: 'USD',
+                }
+            },
+            {
+                identifier: 'dare_card_25',
+                packageType: 'CUSTOM',
+                isMock: true,
+                product: {
+                    identifier: 'dare_card_25',
+                    description: 'The ultimate card hoard for true lovers',
+                    title: '25 Dare Cards',
+                    price: 7.99,
+                    priceString: '$7.99',
+                    currencyCode: 'USD',
                 }
             }
         ]
@@ -91,6 +131,17 @@ const PRODUCT_CARD_MAP: Record<string, number> = {
 
 let isInitialized = false;
 let rcInstance: any = null; // Holds the active instance (Web or Native)
+const PURCHASE_HISTORY_KEY = '@Rumbala_purchase_history';
+
+export interface PurchaseHistoryRecord {
+    id: string;
+    date: string;
+    productId: string;
+    title: string;
+    price: string;
+    cardsAdded?: number;
+    type: 'subscription' | 'consumable';
+}
 
 // ─── Initialize RevenueCat ─────────────────────────────────────
 export async function initRevenueCat(userId?: string): Promise<void> {
@@ -106,7 +157,7 @@ export async function initRevenueCat(userId?: string): Promise<void> {
             }
             // Web Initialization
             rcInstance = WebPurchases.configure(REVENUECAT_API_KEY_WEB, userId || undefined);
-            console.log('🌐 RevenueCat Web initialized');
+            if (__DEV__) console.log('🌐 RevenueCat Web initialized');
         } else {
             // Native Initialization
             const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_APPLE : REVENUECAT_API_KEY_GOOGLE;
@@ -119,7 +170,7 @@ export async function initRevenueCat(userId?: string): Promise<void> {
             }
             NativePurchases.configure({ apiKey, appUserID: userId || undefined });
             rcInstance = NativePurchases;
-            console.log('📱 RevenueCat Native initialized');
+            if (__DEV__) console.log('📱 RevenueCat Native initialized');
         }
 
         isInitialized = true;
@@ -138,7 +189,7 @@ export async function identifyUser(userId: string): Promise<void> {
         } else {
             await rcInstance.logIn(userId);
         }
-        console.log('👤 RevenueCat user identified:', userId);
+        if (__DEV__) console.log('👤 RevenueCat user identified:', userId);
     } catch (error: any) {
         console.error('❌ RevenueCat identify error:', error.message);
     }
@@ -154,17 +205,26 @@ export async function getOfferings(): Promise<any | null> {
 
         if (Platform.OS === 'web') {
             const offerings = await rcInstance.getOfferings();
+            if (__DEV__) console.log('🌐 RC WEB: Offerings loaded:', offerings?.current?.availablePackages?.length || 0);
             return offerings || null;
         } else {
             const offerings = await rcInstance.getOfferings();
             
+            if (offerings?.current?.availablePackages) {
+                console.log('📱 RC NATIVE: CURRENT OFFERING PACKAGES:');
+                offerings.current.availablePackages.forEach((pkg: any) => {
+                    if (__DEV__) console.log(`   - ID: ${pkg.identifier} | ProductID: ${pkg.product.identifier} | Price: ${pkg.product.priceString}`);
+                });
+            } else {
+                console.warn('⚠️ RC NATIVE: No current offering found.');
+            }
+
             // If the offering is valid but empty, it might still throw or return empty
             if (!offerings?.current || offerings.current.availablePackages.length === 0) {
-                console.warn('⚠️ No current offering found, checking for mock fallback...');
+                console.warn('⚠️ No packages in current offering, checking for mock fallback...');
                 if (__DEV__) return MOCK_OFFERING;
             }
 
-            console.log('📦 Offerings loaded:', Object.keys(offerings?.all || {}).length, 'found');
             return offerings || null;
         }
     } catch (error: any) {
@@ -173,7 +233,7 @@ export async function getOfferings(): Promise<any | null> {
         
         // Fallback to mock in development if configuration error occurs
         if (__DEV__) {
-            console.log('🛠️ Using MOCK_OFFERING for development testing');
+            if (__DEV__) console.log('🛠️ Using MOCK_OFFERING for development testing');
             return MOCK_OFFERING;
         }
         return null;
@@ -191,18 +251,19 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
         // 🛠️ Mock Purchase Safety (Development Only)
         // If the package is from our mock data, don't call the native SDK
         if (__DEV__ && (pkg?.identifier === 'monthly' || pkg?.identifier === 'annual' || pkg?.isMock)) {
-            console.log('🛠️ Simulating successful MOCK purchase...');
+            if (__DEV__) console.log('🛠️ Simulating successful MOCK purchase...');
             // Simulate a delay
             await new Promise(resolve => setTimeout(resolve, 1500));
             
             const productId = typeof pkg === 'string' ? pkg : (pkg?.product?.identifier || 'mock_pro');
             const cardsAdded = PRODUCT_CARD_MAP[productId] || 0;
-            if (cardsAdded > 0) handleConsumableSuccess(cardsAdded, productId);
+            if (cardsAdded > 0) handleConsumableSuccess(cardsAdded, productId, pkg);
+            else await appendPurchaseHistory(pkg, { productId, type: 'subscription' });
             
             return { success: true, cardsAdded: cardsAdded > 0 ? cardsAdded : undefined };
         }
 
-        console.log(`🛒 Purchasing ${typeof pkg === 'string' ? pkg : pkg?.identifier || 'package'}...`);
+        if (__DEV__) console.log(`🛒 Purchasing ${typeof pkg === 'string' ? pkg : pkg?.identifier || 'package'}...`);
 
         let customerInfo;
         if (Platform.OS === 'web') {
@@ -228,16 +289,19 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
         const cardsAdded = PRODUCT_CARD_MAP[productId] || 0;
 
         if (cardsAdded > 0) {
-            handleConsumableSuccess(cardsAdded, productId);
+            handleConsumableSuccess(cardsAdded, productId, pkg);
             return { success: true, cardsAdded };
         }
 
         // Must be a subscription (Rumbala Pro)
         const hasPro = checkProEntitlement(customerInfo);
+        if (hasPro) {
+            await appendPurchaseHistory(pkg, { productId, type: 'subscription' });
+        }
         return { success: !!hasPro };
     } catch (error: any) {
         if (error.userCancelled) {
-            console.log('🚫 Purchase cancelled by user');
+            if (__DEV__) console.log('🚫 Purchase cancelled by user');
             return { success: false, error: 'Purchase cancelled' };
         }
         console.error('❌ Purchase error:', error.message || error);
@@ -249,8 +313,13 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
 export function checkProEntitlement(customerInfo: any): boolean {
     if (!customerInfo || !customerInfo.entitlements || !customerInfo.entitlements.active) return false;
 
-    // Check if 'Rumbala Pro' entitlement is active
-    return customerInfo.entitlements.active[ENTITLEMENT_PRO] !== undefined;
+    // Support common entitlement naming variants to avoid false negatives.
+    const activeEntitlements = customerInfo.entitlements.active;
+    return (
+        activeEntitlements[ENTITLEMENT_PRO] !== undefined ||
+        activeEntitlements['Rumbala Pro'] !== undefined ||
+        activeEntitlements['Pro'] !== undefined
+    );
 }
 
 // ─── Restore Purchases ─────────────────────────────────────────
@@ -263,7 +332,7 @@ export async function restorePurchases(): Promise<any | null> {
         } else {
             customerInfo = await NativePurchases.restorePurchases();
         }
-        console.log('🔄 Purchases restored');
+        if (__DEV__) console.log('🔄 Purchases restored');
         return customerInfo;
     } catch (error: any) {
         console.error('❌ Restore error:', error.message);
@@ -274,6 +343,11 @@ export async function restorePurchases(): Promise<any | null> {
 // ─── Get Customer Info ─────────────────────────────────────────
 export async function getCustomerInfo(): Promise<any | null> {
     try {
+        if (!isInitialized) {
+            const userId = useStore.getState().userId;
+            await initRevenueCat(userId || undefined);
+        }
+
         if (Platform.OS === 'web') {
             return await rcInstance.getCustomerInfo();
         } else {
@@ -305,7 +379,7 @@ export async function showCustomerCenter(): Promise<void> {
 }
 
 // ─── Helper: Post-Purchase Card Sync ───────────────────────────
-function handleConsumableSuccess(cardsAdded: number, productId: string) {
+function handleConsumableSuccess(cardsAdded: number, productId: string, pkg?: any) {
     const store = useStore.getState();
     const newCount = (store.cardCount || 0) + cardsAdded;
     store.setCardCount(newCount);
@@ -316,6 +390,37 @@ function handleConsumableSuccess(cardsAdded: number, productId: string) {
             console.warn('Card sync failed after purchase:', err.message);
         });
     }
-    console.log(`🎉 Purchase complete! +${cardsAdded} cards (total: ${newCount})`);
+    appendPurchaseHistory(pkg, { productId, type: 'consumable', cardsAdded }).catch(() => null);
+    if (__DEV__) console.log(`🎉 Purchase complete! +${cardsAdded} cards (total: ${newCount})`);
+}
+
+async function appendPurchaseHistory(pkg: any, extras: { productId: string; type: 'subscription' | 'consumable'; cardsAdded?: number }) {
+    try {
+        const product = pkg?.product;
+        const historyRaw = await AsyncStorage.getItem(PURCHASE_HISTORY_KEY);
+        const history: PurchaseHistoryRecord[] = historyRaw ? JSON.parse(historyRaw) : [];
+        const nextRecord: PurchaseHistoryRecord = {
+            id: `${Date.now()}_${extras.productId}`,
+            date: new Date().toISOString(),
+            productId: extras.productId,
+            title: product?.title || extras.productId,
+            price: product?.priceString || 'N/A',
+            cardsAdded: extras.cardsAdded,
+            type: extras.type,
+        };
+        const nextHistory = [nextRecord, ...history].slice(0, 30);
+        await AsyncStorage.setItem(PURCHASE_HISTORY_KEY, JSON.stringify(nextHistory));
+    } catch (error: any) {
+        console.warn('Failed to persist purchase history:', error?.message || error);
+    }
+}
+
+export async function getPurchaseHistory(): Promise<PurchaseHistoryRecord[]> {
+    try {
+        const historyRaw = await AsyncStorage.getItem(PURCHASE_HISTORY_KEY);
+        return historyRaw ? JSON.parse(historyRaw) : [];
+    } catch {
+        return [];
+    }
 }
 

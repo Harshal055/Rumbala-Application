@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../../src/store/useStore';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+import SafeScreen from '../../src/components/SafeScreen';
 
 function TabIcon({ name, focused, color }: { name: any, focused: boolean, color: string }) {
     const scale = useSharedValue(1);
@@ -26,14 +27,29 @@ function TabIcon({ name, focused, color }: { name: any, focused: boolean, color:
     );
 }
 
+/**
+ * Wraps a tab screen's component with a SafeScreen error boundary.
+ * This ensures that if a single tab crashes, only that tab shows the
+ * recovery UI — the rest of the app continues working normally.
+ */
+function withSafeScreen(ScreenComponent: React.ComponentType, screenName: string) {
+    return function SafeWrappedScreen(props: any) {
+        return (
+            <SafeScreen name={screenName}>
+                <ScreenComponent {...props} />
+            </SafeScreen>
+        );
+    };
+}
+
 export default function TabLayout() {
     const roomId = useStore(state => state.roomId);
     const pathname = usePathname();
     const insets = useSafeAreaInsets();
-    
+
     // Only hide tab bar when in an active room AND on the LDR screen
-    const isLdrActive = !!roomId && pathname.includes('ldr'); 
-    
+    const isLdrActive = !!roomId && pathname.includes('ldr');
+
     const bottomInset = Math.max(insets.bottom, 8);
 
     return (
@@ -42,7 +58,7 @@ export default function TabLayout() {
                 headerShown: false,
                 // Only use the dark background for LDR tab if roomId exists
                 // We'll use a transparent sceneStyle or handle it per-tab
-                sceneStyle: { backgroundColor: '#F8F4F4' }, 
+                sceneStyle: { backgroundColor: '#F8F4F4' },
                 tabBarStyle: isLdrActive
                     ? { display: 'none' as const, height: 0, overflow: 'hidden' as const }
                     : {
@@ -126,4 +142,3 @@ export default function TabLayout() {
         </Tabs>
     );
 }
-

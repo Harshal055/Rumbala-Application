@@ -14,6 +14,8 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../src/constants/glass';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { supabase } from '../src/services/supabase';
 import LegalModal from '../src/components/LegalModal';
 
 const { width } = Dimensions.get('window');
@@ -30,6 +32,68 @@ export default function SignupScreen() {
     const [isLoading, setIsLoading] = useState(false);
     const [legalVisible, setLegalVisible] = useState(false);
     const [legalType, setLegalType] = useState<'terms' | 'privacy'>('terms');
+    const [googleLoading, setGoogleLoading] = useState(false);
+
+    React.useEffect(() => {
+        const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+        console.log('SignupScreen: Configuring GoogleSignin with webClientId:', webClientId);
+        if (webClientId) {
+            GoogleSignin.configure({
+                webClientId: webClientId,
+                offlineAccess: true,
+                forceCodeForRefreshToken: true,
+            });
+        }
+    }, []);
+
+    const handleGoogleSignIn = async () => {
+        try {
+            setGoogleLoading(true);
+            if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
+                throw new Error('Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env');
+            }
+            await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+            await GoogleSignin.signOut().catch(() => null);
+            const result = await GoogleSignin.signIn();
+            
+            if (result.type === 'cancelled') {
+                console.log('Google Sign-In: User cancelled the flow.');
+                return;
+            }
+
+            if (!result.data) {
+                console.error('Google Sign-In: Result data is null but type is not cancelled', result);
+                throw new Error('Google Sign-In failed: No user data received.');
+            }
+
+            const idToken = result.data.idToken;
+
+            if (!idToken) {
+                console.error('Google Sign-In: No idToken found in successful result', result);
+                throw new Error('Unable to complete Google Sign-In. Error: Missing ID Token. Please try again or use email.');
+            }
+
+            const { data: sessionData, error: sessionError } = await supabase.auth.signInWithIdToken({
+                provider: 'google',
+                token: idToken,
+            });
+
+            if (sessionError) throw new Error(sessionError.message);
+            const userId = sessionData?.user?.id;
+            if (!userId) throw new Error('We couldn\'t complete your social login. Please try again.');
+
+            const { postAuthSync } = await import('../src/services/api');
+            await postAuthSync(userId);
+
+            const state = useStore.getState();
+            if (state.isPro || state.hasSeenSubscription) router.replace('/(tabs)');
+            else router.replace('/subscription');
+        } catch (error: any) {
+            if (error?.code !== statusCodes.SIGN_IN_CANCELLED) {
+                showAlert('Sign-In Error', error.message || 'We couldn\'t sign you in with Google. Please try again.');
+            }
+        } finally { setGoogleLoading(false); }
+    };
 
     const handleBack = () => {
         if (router.canGoBack()) router.back();
@@ -185,16 +249,20 @@ export default function SignupScreen() {
                                 <View style={styles.line} />
                             </View>
 
-                            <View style={styles.socialRow}>
-                                <TouchableOpacity style={[styles.socialBtn, glassStyles.container]}>
-                                    <Ionicons name="logo-google" size={20} color="#4285F4" />
-                                    <Text style={styles.socialBtnText}>Google</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={[styles.socialBtn, glassStyles.container]}>
-                                    <Ionicons name="logo-apple" size={20} color="#000" />
-                                    <Text style={styles.socialBtnText}>Apple</Text>
-                                </TouchableOpacity>
-                            </View>
+                            <TouchableOpacity 
+                                style={[styles.socialBtnFull, glassStyles.container, googleLoading && styles.socialBtnDisabled]} 
+                                onPress={handleGoogleSignIn}
+                                disabled={googleLoading}
+                            >
+                                {googleLoading ? (
+                                    <ActivityIndicator size="small" color="#FF6B35" />
+                                ) : (
+                                    <>
+                                        <Ionicons name="logo-google" size={24} color="#4285F4" />
+                                        <Text style={styles.socialBtnTextFull}>Continue with Google</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
 
                             <TouchableOpacity 
                                 style={styles.footer} 
@@ -222,7 +290,7 @@ export default function SignupScreen() {
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
     scroll: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 60 },
-    topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, marginBottom: 10 },
+    topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, marginBottom: 10 },
     backBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
     headerTitle: { fontSize: 24, color: '#1a1a1a' },
     
@@ -252,9 +320,9 @@ const styles = StyleSheet.create({
     line: { flex: 1, height: 1.5, backgroundColor: 'rgba(0,0,0,0.05)' },
     dividerText: { fontSize: 11, fontWeight: '800', color: '#999', letterSpacing: 1 },
 
-    socialRow: { flexDirection: 'row', gap: 12, marginBottom: 28 },
-    socialBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, height: 52, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.4)' },
-    socialBtnText: { fontSize: 15, fontWeight: '800', color: '#444' },
+    socialBtnFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', height: 56, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.4)', gap: 12, marginBottom: 28 },
+    socialBtnDisabled: { opacity: 0.6 },
+    socialBtnTextFull: { fontSize: 16, fontWeight: '800', color: '#444' },
 
     footer: { alignItems: 'center' },
     footerText: { fontSize: 15, color: '#666', fontWeight: '500' },

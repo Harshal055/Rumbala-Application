@@ -159,7 +159,7 @@ export const getChatMessagesV2 = async (
 // ===== POLLING-BASED SUBSCRIPTIONS =====
 // Since we don't have WebSocket support yet, we use polling to simulate real-time updates
 
-const POLL_INTERVAL_MS = 1000;
+const POLL_INTERVAL_MS = 2500; // Optimized: Poll every 2.5s instead of 1s to save battery/network
 
 /**
  * Subscribe to room updates (polls every 2.5 seconds)

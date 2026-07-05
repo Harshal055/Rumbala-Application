@@ -24,7 +24,7 @@ export const glassStyles = StyleSheet.create({
         elevation: glassTokens.elevation,
     },
     header: {
-      
+
         borderBottomWidth: 1,
         borderBottomColor: 'rgba(255, 255, 255, 0.3)',
     },

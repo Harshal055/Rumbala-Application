@@ -1,0 +1,26 @@
+diff --git a/node_modules/agora-rn-uikit/src/RtcConfigure.tsx b/node_modules/agora-rn-uikit/src/RtcConfigure.tsx
+index a6329ac..60fcefe 100644
+--- a/node_modules/agora-rn-uikit/src/RtcConfigure.tsx
++++ b/node_modules/agora-rn-uikit/src/RtcConfigure.tsx
+@@ -42,7 +42,7 @@ const RtcConfigure: React.FC<PropsWithChildren<Partial<RtcPropsInterface>>> = (
+   props,
+ ) => {
+   const {callbacks, rtcProps} = useContext(PropsContext);
+-  const rtcUidRef = useRef<number>();
++  const rtcUidRef = useRef<number>(0);
+   const [rtcChannelJoined, setRtcChannelJoined] = useState(false);
+   let [dualStreamMode, setDualStreamMode] = useState<DualStreamMode>(
+     rtcProps?.initialDualStreamMode || DualStreamMode.DYNAMIC,
+diff --git a/node_modules/agora-rn-uikit/src/RtmConfigure.tsx b/node_modules/agora-rn-uikit/src/RtmConfigure.tsx
+index 94fbdb4..5f8e502 100644
+--- a/node_modules/agora-rn-uikit/src/RtmConfigure.tsx
++++ b/node_modules/agora-rn-uikit/src/RtmConfigure.tsx
+@@ -35,7 +35,7 @@ import RTMEngine from './RTMEngine';
+  * React component that contains the RTM logic. It manages the usernames, remote mute requests and provides data to the children components by wrapping them with context providers.
+  */
+ const RtmConfigure: React.FC<PropsWithChildren> = (props) => {
+-  const rtmEngineRef = useRef<RtmEngine>();
++  const rtmEngineRef = useRef<RtmEngine | undefined>(undefined);
+   const local = useContext(LocalContext);
+   const {rtcProps, rtmProps, rtmCallbacks} = useContext(PropsContext);
+   const {RtcEngine, dispatch, rtcUidRef} = useContext(RtcContext);

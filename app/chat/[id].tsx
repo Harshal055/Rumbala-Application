@@ -47,7 +47,7 @@ export default function ChatScreen() {
     return (
         <SafeAreaView style={c.chatContainer} edges={['top', 'left', 'right']}>
             <StatusBar barStyle="dark-content" />
-            
+
             {/* Custom Header */}
             <View style={c.chatHeader}>
                 <TouchableOpacity onPress={() => router.back()} style={c.headerBtn}>
@@ -71,7 +71,7 @@ export default function ChatScreen() {
                 </View>
             </View>
 
-            <ScrollView 
+            <ScrollView
                 ref={chatScrollRef}
                 style={c.messageList}
                 contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
@@ -94,7 +94,7 @@ export default function ChatScreen() {
                         const isSystem = m.sender?.includes('System');
                         return (
                             <View key={m.id} style={[
-                                c.msgWrap, 
+                                c.msgWrap,
                                 isMe ? c.msgMe : c.msgPartner,
                                 isSystem && c.msgSystem
                             ]}>
@@ -107,12 +107,12 @@ export default function ChatScreen() {
                                 )}
                                 <View style={c.msgBody}>
                                     <View style={[
-                                        c.bubble, 
+                                        c.bubble,
                                         isMe ? c.bubbleMe : c.bubblePartner,
                                         isSystem && c.bubbleSystem
                                     ]}>
                                         <Text style={[
-                                            c.msgText, 
+                                            c.msgText,
                                             isMe ? c.textMe : c.textPartner,
                                             isSystem && c.textSystem
                                         ]}>
@@ -132,7 +132,7 @@ export default function ChatScreen() {
                 )}
             </ScrollView>
 
-            <KeyboardAvoidingView 
+            <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                 keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
                 style={c.floatingInputArea}
@@ -149,9 +149,9 @@ export default function ChatScreen() {
                     />
                     <TouchableOpacity style={c.inputIcon}><Ionicons name="attach-outline" size={24} color="#A1B0C1" /></TouchableOpacity>
                     <TouchableOpacity style={c.inputIcon}><Ionicons name="camera-outline" size={24} color="#A1B0C1" /></TouchableOpacity>
-                    
-                    <TouchableOpacity 
-                        style={c.sendBtn} 
+
+                    <TouchableOpacity
+                        style={c.sendBtn}
                         onPress={handleSendMessage}
                         disabled={!chatInput.trim()}
                     >
@@ -169,7 +169,7 @@ const c = StyleSheet.create({
     chatContainer: { flex: 1, backgroundColor: '#F8F9FA' },
     chatHeader: {
         flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-        paddingHorizontal: 16, paddingVertical: 14, 
+        paddingHorizontal: 16, paddingVertical: 14,
         borderBottomWidth: 1, borderBottomColor: '#F0F0F0',
         elevation: 0, shadowColor: 'rgba(0,0,0,0.03)', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 3
     },
@@ -193,18 +193,18 @@ const c = StyleSheet.create({
     msgPartner: { alignSelf: 'flex-start' },
     msgSystem: { alignSelf: 'center', maxWidth: '90%', marginBottom: 10, flexDirection: 'column' },
     msgAvatarMini: { marginRight: 8, alignSelf: 'flex-end' },
-    
+
     msgBody: { maxWidth: '100%' },
     bubble: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 18, elevation: 0, shadowColor: 'rgba(0,0,0,0.05)', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
     bubbleMe: { backgroundColor: '#FF6B35', borderBottomRightRadius: 2 },
     bubblePartner: { backgroundColor: '#fff', borderBottomLeftRadius: 2 },
     bubbleSystem: { backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, paddingVertical: 6, shadowOpacity: 0 },
-    
+
     msgText: { fontSize: 15, lineHeight: 21 },
     textMe: { color: '#fff' },
     textPartner: { color: '#1a1a1a' },
     textSystem: { color: '#666', fontSize: 12, fontStyle: 'italic', textAlign: 'center' },
-    
+
     timeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingHorizontal: 4 },
     timeText: { fontSize: 10, color: '#BBB', fontWeight: '500' },
 
@@ -213,7 +213,7 @@ const c = StyleSheet.create({
 
     floatingInputArea: { backgroundColor: '#fff', paddingHorizontal: 16, paddingTop: 12 },
     inputWrapper: {
-        flexDirection: 'row', alignItems: 'center', 
+        flexDirection: 'row', alignItems: 'center',
         backgroundColor: '#F3F5F7', borderRadius: 30, paddingHorizontal: 12, paddingVertical: 6
     },
     input: { flex: 1, maxHeight: 100, paddingHorizontal: 12, fontSize: 15, color: '#1a1a1a' },

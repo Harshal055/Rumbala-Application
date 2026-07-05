@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, ActivityIndicator, Alert, StatusBar } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, StatusBar, useWindowDimensions, Platform } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,29 +12,31 @@ import Animated, {
     withSpring,
     withRepeat,
     withSequence,
+    withDelay,
     interpolate,
     Extrapolation,
-    FadeInDown
+    FadeInDown,
+    FadeInUp,
+    Easing,
 } from 'react-native-reanimated';
 import { useStore } from '../src/store/useStore';
-import { getOfferings, purchasePackage, restorePurchases, checkProEntitlement } from '../src/services/revenueCatService';
+import { getOfferings, purchasePackage, restorePurchases, checkProEntitlement, getCustomerInfo } from '../src/services/revenueCatService';
 import AnimatedBackground from '../src/components/AnimatedBackground';
-import { glassStyles, glassTokens } from '../src/constants/glass';
+import { glassStyles } from '../src/constants/glass';
+import { resolvePlanPackages, inferPeriodLabel, PAYWALL_FEATURES } from '../src/constants/pricing';
 
-const { width } = Dimensions.get('window');
 
-const FALLBACK_ANNUAL = { title: 'Annual Pro', price: '₹999/year', trialText: '₹2 for 3 days, then ₹999/yr' };
-const FALLBACK_MONTHLY = { title: 'Monthly Basic', price: '₹99/month', trialText: '₹2 for 3 days, then ₹99/mo' };
-
-const BG_COLORS = ['#0F0F1A', '#05050A', '#1A000D'];
+const FALLBACK_ANNUAL = { title: 'Annual Pro', price: '₹999/year', trialText: '3 days free, then ₹999/yr' };
+const FALLBACK_MONTHLY = { title: 'Monthly Pro', price: '₹99/month', trialText: '3 days free, then ₹99/mo' };
+const BG_COLORS = ['#06000A', '#150820', '#0A0414'];
 
 export default function SubscriptionScreen() {
     const router = useRouter();
+    const insets = useSafeAreaInsets();
+    const { width } = useWindowDimensions();
     const { setHasSeenSubscription, setIsPro, showAlert } = useStore();
 
-    const revealProgress = useSharedValue(0);
-    const [isRevealed, setIsRevealed] = useState(false);
-    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual' | null>(null);
+    const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
     const [isPurchasing, setIsPurchasing] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
 
@@ -43,16 +45,36 @@ export default function SubscriptionScreen() {
     const [annualInfo, setAnnualInfo] = useState(FALLBACK_ANNUAL);
     const [monthlyInfo, setMonthlyInfo] = useState(FALLBACK_MONTHLY);
 
-    const pulseValue = useSharedValue(1);
+    const crownFloat = useSharedValue(0);
+    const glowPulse = useSharedValue(0);
+    const ctaPulse = useSharedValue(0);
+    const ringRotate = useSharedValue(0);
 
     useEffect(() => {
-        pulseValue.value = withRepeat(
+        crownFloat.value = withRepeat(
             withSequence(
-                withTiming(1.1, { duration: 1500 }),
-                withTiming(0.9, { duration: 1500 })
+                withTiming(-12, { duration: 2200, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0, { duration: 2200, easing: Easing.inOut(Easing.ease) })
             ),
-            -1,
-            true
+            -1, true
+        );
+        glowPulse.value = withRepeat(
+            withSequence(
+                withTiming(1, { duration: 2000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0, { duration: 2000, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1, true
+        );
+        ctaPulse.value = withRepeat(
+            withSequence(
+                withDelay(3000, withTiming(1, { duration: 600 })),
+                withTiming(0, { duration: 600 })
+            ),
+            -1, true
+        );
+        ringRotate.value = withRepeat(
+            withTiming(360, { duration: 12000, easing: Easing.linear }),
+            -1, false
         );
         loadOfferings();
     }, []);
@@ -61,31 +83,25 @@ export default function SubscriptionScreen() {
         try {
             const offerings = await getOfferings();
             const current = offerings?.current;
-            if (!current) return;
-
-            const annual = current.annual;
-            const monthly = current.monthly;
+            const availablePackages = current?.availablePackages || [];
+            const { annual, monthly } = resolvePlanPackages(availablePackages);
 
             if (annual) {
                 setAnnualPackage(annual);
                 const p = annual.product;
                 setAnnualInfo({
-                    title: p.title || 'Annual Pro',
+                    title: 'Annual Pro',
                     price: p.priceString || '₹999/year',
-                    trialText: p.introPrice
-                        ? `${p.introPrice.priceString} for ${p.introPrice.periodNumberOfUnits} days, then ${p.priceString}`
-                        : p.priceString,
+                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${p.priceString}` : p.priceString,
                 });
             }
             if (monthly) {
                 setMonthlyPackage(monthly);
                 const p = monthly.product;
                 setMonthlyInfo({
-                    title: p.title || 'Monthly Basic',
+                    title: 'Monthly Pro',
                     price: p.priceString || '₹99/month',
-                    trialText: p.introPrice
-                        ? `${p.introPrice.priceString} for ${p.introPrice.periodNumberOfUnits} days, then ${p.priceString}`
-                        : p.priceString,
+                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${p.priceString}` : p.priceString,
                 });
             }
         } catch (e) {
@@ -93,43 +109,59 @@ export default function SubscriptionScreen() {
         }
     };
 
+    const crownStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: crownFloat.value }],
+    }));
+
     const glowStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: pulseValue.value }],
-        opacity: interpolate(pulseValue.value, [0.9, 1.1], [0.3, 0.7], Extrapolation.CLAMP)
+        opacity: interpolate(glowPulse.value, [0, 1], [0.15, 0.45], Extrapolation.CLAMP),
+        transform: [{ scale: interpolate(glowPulse.value, [0, 1], [0.85, 1.15], Extrapolation.CLAMP) }],
+    }));
+
+    const ringStyle = useAnimatedStyle(() => ({
+        transform: [{ rotate: `${ringRotate.value}deg` }],
+    }));
+
+    const ctaGlowStyle = useAnimatedStyle(() => ({
+        opacity: interpolate(ctaPulse.value, [0, 1], [0, 0.5], Extrapolation.CLAMP),
+        transform: [{ scale: interpolate(ctaPulse.value, [0, 1], [0.95, 1.08], Extrapolation.CLAMP) }],
     }));
 
     const handleSelectPlan = (plan: 'monthly' | 'annual') => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setSelectedPlan(plan);
-        if (!isRevealed) {
-            setIsRevealed(true);
-            revealProgress.value = withSpring(1, { damping: 15, stiffness: 100 });
-        }
     };
+
+    const btnScale = useSharedValue(1);
+    const handleTrialPressIn = () => { btnScale.value = withSpring(0.95); };
+    const handleTrialPressOut = () => { btnScale.value = withSpring(1); };
 
     const handleStartTrial = async () => {
         const pkg = selectedPlan === 'annual' ? annualPackage : monthlyPackage;
         if (!pkg) {
-            setIsPro(true);
-            setHasSeenSubscription(true);
-            router.replace('/(tabs)');
+            showAlert('Store Not Ready', 'Subscription plans are still loading. Please try again in a moment.');
             return;
         }
-
         setIsPurchasing(true);
         try {
             const result = await purchasePackage(pkg);
             if (result.success) {
-                setIsPro(true);
-                setHasSeenSubscription(true);
-                showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.', [
-                    { text: "Let's Go!", onPress: () => router.replace('/(tabs)') }
-                ]);
+                const info = await getCustomerInfo();
+                const hasPro = checkProEntitlement(info);
+
+                if (hasPro) {
+                    setIsPro(true);
+                    setHasSeenSubscription(true);
+                    showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.', [{ text: "Let's Go!", onPress: () => router.replace('/(tabs)') }]);
+                } else {
+                    setIsPro(false);
+                    showAlert('Purchase Pending', 'Your purchase is complete, but Pro is still syncing. Please reopen the app or tap Restore.');
+                }
             } else if (result.error && result.error !== 'Purchase cancelled') {
-                showAlert('Purchase Failed', result.error || 'Please try again.');
+                showAlert('Purchase Failed', result.error);
             }
         } catch (e: any) {
-            showAlert('Purchase Error', e.message || 'We couldn\'t process your purchase. Please try again.');
+            showAlert('Purchase Error', e.message);
         } finally {
             setIsPurchasing(false);
         }
@@ -139,18 +171,14 @@ export default function SubscriptionScreen() {
         setIsRestoring(true);
         try {
             const info = await restorePurchases();
-            const hasPro = checkProEntitlement(info);
-            if (hasPro) {
-                setIsPro(true);
-                setHasSeenSubscription(true);
-                showAlert('✅ Restored!', 'Your Pro subscription has been restored.', [
-                    { text: 'Continue', onPress: () => router.replace('/(tabs)') }
-                ]);
+            if (checkProEntitlement(info)) {
+                setIsPro(true); setHasSeenSubscription(true);
+                showAlert('✅ Restored!', 'Your Pro subscription has been restored.', [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
             } else {
-                showAlert('No Active Subscription', 'No active Pro subscription found for this account.');
+                showAlert('Not Found', 'No active Pro subscription found for this account.');
             }
         } catch (e: any) {
-            showAlert('Restore Error', e.message || 'We couldn\'t restore your past purchases. Please try again.');
+            showAlert('Restore Error', e.message);
         } finally {
             setIsRestoring(false);
         }
@@ -161,132 +189,237 @@ export default function SubscriptionScreen() {
         router.replace('/(tabs)');
     };
 
-    const strikethroughStyle = useAnimatedStyle(() => ({
-        opacity: withTiming(isRevealed ? 0.5 : 1, { duration: 300 }),
-        textDecorationLine: isRevealed ? 'line-through' : 'none',
-    }));
 
-    const discountMessageStyle = useAnimatedStyle(() => ({
-        opacity: revealProgress.value,
-        transform: [{ translateY: withSpring(isRevealed ? 0 : -20, { damping: 12 }) }]
-    }));
+    const annualSuffix = inferPeriodLabel(annualInfo.price, 'annual');
+    const monthlySuffix = inferPeriodLabel(monthlyInfo.price, 'monthly');
 
-    const newPriceStyle = useAnimatedStyle(() => ({
-        opacity: revealProgress.value,
-        transform: [{ scale: withSpring(isRevealed ? 1 : 0.8) }]
-    }));
+    const featureIconColors: Record<string, string[]> = {
+        'infinite': ['#A855F7', '#7C3AED'],
+        'videocam': ['#EC4899', '#DB2777'],
+        'flame': ['#F97316', '#EF4444'],
+        'color-palette': ['#06B6D4', '#3B82F6'],
+    };
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top']}>
                 <StatusBar barStyle="light-content" />
-                <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+                
+                {/* Header */}
+                <View style={[styles.header, { top: insets.top + 8 }]}>
+                    <TouchableOpacity onPress={handleSkip} style={styles.closeBtn}>
+                        <Ionicons name="close" size={18} color="rgba(255,255,255,0.5)" />
+                    </TouchableOpacity>
+                </View>
 
-                    {/* Header */}
-                    <View style={styles.header}>
-                        <TouchableOpacity onPress={handleSkip} style={[styles.skipBtn, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
-                            <Ionicons name="close" size={22} color="rgba(255,255,255,0.8)" />
-                        </TouchableOpacity>
-                    </View>
+                <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+                    
+                    {/* Hero */}
+                    <Animated.View entering={FadeInDown.duration(700).springify()} style={styles.heroWrap}>
+                        {/* Outer glow */}
+                        <Animated.View style={[styles.heroGlow, glowStyle]} />
+                        {/* Rotating ring */}
+                        <Animated.View style={[styles.heroRing, ringStyle]}>
+                            <LinearGradient
+                                colors={['#A855F7', '#EC4899', '#F97316', '#A855F7']}
+                                style={styles.heroRingGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            />
+                        </Animated.View>
+                        {/* Crown icon */}
+                        <Animated.View style={[styles.heroIconWrap, crownStyle]}>
+                            <LinearGradient
+                                colors={['#A855F7', '#EC4899']}
+                                style={styles.heroIconBg}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                <Ionicons name="diamond" size={36} color="#fff" />
+                            </LinearGradient>
+                        </Animated.View>
+                    </Animated.View>
 
                     {/* Title */}
-                    <View style={styles.titleContainer}>
-                        <View style={styles.iconContainerWrapper}>
-                            <Animated.View style={[styles.glow, glowStyle]} />
-                            <LinearGradient colors={['#FF1493', '#FF6B35']} style={styles.iconContainer} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                                <Ionicons name="diamond" size={42} color="#FFFFFF" />
-                            </LinearGradient>
-                        </View>
-                        <Animated.View entering={FadeInDown.delay(100).duration(500)}>
-                            <Text style={styles.title}>Unlock Premium</Text>
-                            <Text style={styles.subtitle}>Get absolutamente unlimited cards, unhinged dares, and endless video calls.</Text>
-                        </Animated.View>
-                    </View>
+                    <Animated.View entering={FadeInDown.delay(80).duration(600).springify()} style={styles.titleWrap}>
+                        <Text style={styles.title}>Unlock Premium</Text>
+                        <Text style={styles.subtitle}>
+                            Get absolute unlimited access to all features, dares, and exclusive LDR video calls.
+                        </Text>
+                    </Animated.View>
 
-                    {/* Features */}
-                    <View style={styles.featuresList}>
-                        {[
-                            { icon: 'infinite', text: 'Unlimited dare cards' },
-                            { icon: 'videocam', text: 'Unlimited video calls' },
-                            { icon: 'flash', text: 'Exclusive spicy content' },
-                            { icon: 'star', text: 'Priority support' },
-                        ].map((f, i) => (
-                            <Animated.View key={i} entering={FadeInDown.delay(200 + i * 100).duration(500)} style={[styles.featureRow, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 16, marginBottom: 8 }]}>
-                                <View style={[styles.featureIconBg, glassStyles.container, { backgroundColor: 'rgba(255, 20, 147, 0.2)' }]}>
-                                    <Ionicons name={f.icon as any} size={16} color="#FFB8D2" />
+                    {/* Horizontal Feature Strip */}
+                    <Animated.View entering={FadeInDown.delay(150).duration(600).springify()} style={styles.featureStrip}>
+                        {PAYWALL_FEATURES.map((f, i) => {
+                            const colors = featureIconColors[f.icon] || ['#A855F7', '#7C3AED'];
+                            return (
+                                <View key={f.id} style={styles.featureChip}>
+                                    <LinearGradient
+                                        colors={colors as unknown as readonly [string, string, ...string[]]}
+                                        style={styles.featureChipIcon}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                    >
+                                        <Ionicons name={f.icon as any} size={16} color="#fff" />
+                                    </LinearGradient>
+                                    <View style={styles.featureChipText}>
+                                        <Text style={styles.featureChipTitle}>{f.title}</Text>
+                                        <Text style={styles.featureChipDesc}>{f.desc}</Text>
+                                    </View>
                                 </View>
-                                <Text style={styles.featureText}>{f.text}</Text>
-                            </Animated.View>
-                        ))}
-                    </View>
+                            );
+                        })}
+                    </Animated.View>
 
-                    {/* Discount banner */}
-                    <Animated.View style={[styles.discountMessageWrapper, discountMessageStyle]}>
-                        <LinearGradient
-                            colors={['rgba(255, 20, 147, 0.4)', 'rgba(255, 107, 53, 0.4)']}
-                            style={[styles.discountBadge, glassStyles.container]}
-                            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                    {/* Plan Cards */}
+                    <Animated.View entering={FadeInUp.delay(250).duration(600).springify()} style={styles.plansWrap}>
+
+                        {/* Annual Plan */}
+                        <TouchableOpacity
+                            style={[styles.planCard, selectedPlan === 'annual' && styles.planCardSelected]}
+                            activeOpacity={0.85}
+                            onPress={() => handleSelectPlan('annual')}
                         >
-                            <Text style={styles.discountBadgeText}>✨ Special Offer Unlocked!</Text>
-                        </LinearGradient>
-                    </Animated.View>
-
-                    {/* Plans */}
-                    <View style={styles.plansContainer}>
-                        {/* Annual */}
-                        <TouchableOpacity activeOpacity={0.9} style={[styles.planCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.06)' }, selectedPlan === 'annual' && styles.planCardSelected]} onPress={() => handleSelectPlan('annual')}>
-                            <View style={styles.popularBadge}><Text style={styles.popularText}>BEST VALUE</Text></View>
-                            <View style={styles.planHeader}>
-                                <Text style={styles.planName}>{annualInfo.title}</Text>
-                                <View style={[styles.radioOuter, glassStyles.container, selectedPlan === 'annual' && styles.radioOuterSelected]}>
-                                    {selectedPlan === 'annual' && <View style={styles.radioInner} />}
+                            {/* Background gradient on selection */}
+                            {selectedPlan === 'annual' && (
+                                <LinearGradient
+                                    colors={['rgba(168,85,247,0.12)', 'rgba(236,72,153,0.06)', 'transparent']}
+                                    style={StyleSheet.absoluteFill}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                />
+                            )}
+                            {/* Best Value badge */}
+                            <View style={styles.saveBadge}>
+                                <LinearGradient
+                                    colors={['#A855F7', '#EC4899']}
+                                    style={styles.saveBadgeGrad}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                >
+                                    <Text style={styles.saveBadgeText}>BEST VALUE</Text>
+                                </LinearGradient>
+                            </View>
+                            <View style={styles.planRow}>
+                                <View style={styles.planLeft}>
+                                    <View style={[styles.radioOuter, selectedPlan === 'annual' && styles.radioOuterActive]}>
+                                        {selectedPlan === 'annual' && (
+                                            <LinearGradient
+                                                colors={['#A855F7', '#EC4899']}
+                                                style={styles.radioInner}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 1 }}
+                                            />
+                                        )}
+                                    </View>
+                                    <View style={styles.planTextWrap}>
+                                        <Text style={styles.planName}>{annualInfo.title}</Text>
+                                        <Text style={styles.planTrial}>{annualInfo.trialText}</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.planRight}>
+                                    <Text style={styles.planPrice}>
+                                        {annualInfo.price.split('/')[0]}
+                                        <Text style={styles.planPeriod}>{annualSuffix}</Text>
+                                    </Text>
                                 </View>
                             </View>
-                            <View style={styles.priceRow}>
-                                <Animated.Text style={[styles.originalPrice, strikethroughStyle]}>{annualInfo.price}</Animated.Text>
-                            </View>
-                            <Animated.View style={[styles.newPriceWrapper, newPriceStyle]}>
-                                {isRevealed && <Text style={styles.newPriceHighlight}>{annualInfo.trialText}</Text>}
-                            </Animated.View>
                         </TouchableOpacity>
 
-                        {/* Monthly */}
-                        <TouchableOpacity activeOpacity={0.9} style={[styles.planCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.06)' }, selectedPlan === 'monthly' && styles.planCardSelected]} onPress={() => handleSelectPlan('monthly')}>
-                            <View style={styles.planHeader}>
-                                <Text style={styles.planName}>{monthlyInfo.title}</Text>
-                                <View style={[styles.radioOuter, glassStyles.container, selectedPlan === 'monthly' && styles.radioOuterSelected]}>
-                                    {selectedPlan === 'monthly' && <View style={styles.radioInner} />}
+                        {/* Monthly Plan */}
+                        <TouchableOpacity
+                            style={[styles.planCard, selectedPlan === 'monthly' && styles.planCardSelected]}
+                            activeOpacity={0.85}
+                            onPress={() => handleSelectPlan('monthly')}
+                        >
+                            {selectedPlan === 'monthly' && (
+                                <LinearGradient
+                                    colors={['rgba(168,85,247,0.12)', 'rgba(236,72,153,0.06)', 'transparent']}
+                                    style={StyleSheet.absoluteFill}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                />
+                            )}
+                            <View style={styles.planRow}>
+                                <View style={styles.planLeft}>
+                                    <View style={[styles.radioOuter, selectedPlan === 'monthly' && styles.radioOuterActive]}>
+                                        {selectedPlan === 'monthly' && (
+                                            <LinearGradient
+                                                colors={['#A855F7', '#EC4899']}
+                                                style={styles.radioInner}
+                                                start={{ x: 0, y: 0 }}
+                                                end={{ x: 1, y: 1 }}
+                                            />
+                                        )}
+                                    </View>
+                                    <View style={styles.planTextWrap}>
+                                        <Text style={styles.planName}>{monthlyInfo.title}</Text>
+                                        <Text style={styles.planTrial}>{monthlyInfo.trialText}</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.planRight}>
+                                    <Text style={styles.planPrice}>
+                                        {monthlyInfo.price.split('/')[0]}
+                                        <Text style={styles.planPeriod}>{monthlySuffix}</Text>
+                                    </Text>
                                 </View>
                             </View>
-                            <View style={styles.priceRow}>
-                                <Animated.Text style={[styles.originalPrice, strikethroughStyle]}>{monthlyInfo.price}</Animated.Text>
-                            </View>
-                            <Animated.View style={[styles.newPriceWrapper, newPriceStyle]}>
-                                {isRevealed && <Text style={styles.newPriceHighlight}>{monthlyInfo.trialText}</Text>}
-                            </Animated.View>
                         </TouchableOpacity>
-                    </View>
 
-                    {/* CTA */}
-                    <Animated.View style={[styles.ctaContainer, { opacity: revealProgress }]} pointerEvents={isRevealed ? 'auto' : 'none'}>
-                        <TouchableOpacity style={styles.primaryBtn} onPress={handleStartTrial} disabled={isPurchasing} activeOpacity={0.85}>
-                            <LinearGradient colors={['#FF1493', '#FF4D17']} style={styles.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
-                                {isPurchasing
-                                    ? <ActivityIndicator color="#fff" size="small" />
-                                    : <Text style={styles.primaryBtnText}>Start My 3-Day Free Trial</Text>
-                                }
-                            </LinearGradient>
-                        </TouchableOpacity>
-                        <Text style={styles.footerNote}>Cancel anytime. You won't be charged before the trial ends.</Text>
-                        <TouchableOpacity onPress={handleRestore} disabled={isRestoring} style={styles.restoreBtn}>
-                            {isRestoring
-                                ? <ActivityIndicator color="rgba(255,255,255,0.5)" size="small" />
-                                : <Text style={styles.restoreText}>Restore Purchases</Text>
-                            }
-                        </TouchableOpacity>
                     </Animated.View>
+
+                    {/* Bottom spacer */}
+                    <View style={{ height: 140 }} />
 
                 </ScrollView>
+
+                {/* Sticky Footer */}
+                <Animated.View entering={FadeInUp.delay(400).duration(500)} style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+                    <LinearGradient colors={['transparent', 'rgba(6,0,10,0.95)', '#06000A']} style={styles.footerGradient} />
+                    
+                    <View style={styles.footerContent}>
+                        <TouchableOpacity
+                            onPressIn={handleTrialPressIn}
+                            onPressOut={handleTrialPressOut}
+                            onPress={handleStartTrial}
+                            disabled={isPurchasing}
+                            activeOpacity={0.9}
+                        >
+                            <Animated.View style={styles.ctaBtnWrap}>
+                                {/* Pulsing glow behind CTA */}
+                                <Animated.View style={[styles.ctaGlow, ctaGlowStyle]} />
+                                <Animated.View style={[styles.ctaBtn, { transform: [{ scale: btnScale }] }]}>
+                                    <LinearGradient
+                                        colors={['#A855F7', '#EC4899', '#F97316']}
+                                        style={styles.ctaGrad}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                    >
+                                        {isPurchasing ? (
+                                            <ActivityIndicator color="#fff" />
+                                        ) : (
+                                            <>
+                                                <Text style={styles.ctaText}>Start Free Trial</Text>
+                                                <View style={styles.ctaArrow}>
+                                                    <Ionicons name="arrow-forward" size={18} color="#fff" />
+                                                </View>
+                                            </>
+                                        )}
+                                    </LinearGradient>
+                                </Animated.View>
+                            </Animated.View>
+                        </TouchableOpacity>
+
+                        <View style={styles.footerLinks}>
+                            <Text style={styles.footerLinkText}>Cancel anytime.</Text>
+                            <View style={styles.dot} />
+                            <TouchableOpacity onPress={handleRestore} disabled={isRestoring}>
+                                <Text style={styles.restoreText}>{isRestoring ? 'Restoring...' : 'Restore Purchases'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Animated.View>
+                
             </SafeAreaView>
         </AnimatedBackground>
     );
@@ -294,41 +427,161 @@ export default function SubscriptionScreen() {
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
-    scroll: { flexGrow: 1, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 10 },
-    header: { flexDirection: 'row', justifyContent: 'flex-end', paddingBottom: 16 },
-    skipBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-    titleContainer: { alignItems: 'center', marginBottom: 28 },
-    iconContainerWrapper: { position: 'relative', width: 90, height: 90, justifyContent: 'center', alignItems: 'center', marginBottom: 24 },
-    glow: { position: 'absolute', width: 120, height: 120, borderRadius: 60, backgroundColor: '#FF1493' },
-    iconContainer: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
-    title: { fontSize: 34, fontWeight: '900', color: '#FFFFFF', marginBottom: 10, textAlign: 'center', letterSpacing: 0.5 },
-    subtitle: { fontSize: 16, color: 'rgba(255,255,255,0.8)', textAlign: 'center', paddingHorizontal: 10, lineHeight: 24, fontWeight: '600' },
-    featuresList: { marginBottom: 24 },
-    featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    featureIconBg: { width: 34, height: 34, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-    featureText: { color: 'rgba(255,255,255,0.9)', fontSize: 15, fontWeight: '600' },
-    discountMessageWrapper: { alignItems: 'center', marginBottom: 20, height: 44, justifyContent: 'center' },
-    discountBadge: { paddingHorizontal: 20, paddingVertical: 12, borderRadius: 22, borderWidth: 1.5, borderColor: 'rgba(255, 20, 147, 0.4)' },
-    discountBadgeText: { color: '#FFB8D2', fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 },
-    plansContainer: { gap: 16, marginBottom: 32 },
-    planCard: { borderRadius: 28, padding: 24, position: 'relative', overflow: 'visible' },
-    planCardSelected: { borderColor: '#FF1493', borderWidth: 2, backgroundColor: 'rgba(255, 20, 147, 0.1)' },
-    popularBadge: { position: 'absolute', top: -14, right: 24, backgroundColor: '#FF1493', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, zIndex: 10 },
-    popularText: { color: '#FFF', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-    planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-    planName: { fontSize: 20, fontWeight: '800', color: '#FFFFFF' },
-    radioOuter: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)' },
-    radioOuterSelected: { borderColor: '#FF1493' },
-    radioInner: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#FF1493' },
-    priceRow: { flexDirection: 'row', alignItems: 'center' },
-    originalPrice: { fontSize: 24, fontWeight: '900', color: '#FFFFFF' },
-    newPriceWrapper: { marginTop: 4, height: 24 },
-    newPriceHighlight: { fontSize: 15, fontWeight: '800', color: '#FFB8D2' },
-    ctaContainer: { marginTop: 'auto', alignItems: 'center', paddingBottom: 20 },
-    primaryBtn: { width: '100%', height: 64, borderRadius: 32, overflow: 'hidden', marginBottom: 16 },
-    btnGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    primaryBtnText: { color: '#FFFFFF', fontSize: 18, fontWeight: '900', letterSpacing: 0.5 },
-    footerNote: { fontSize: 13, color: 'rgba(255,255,255,0.5)', textAlign: 'center', paddingHorizontal: 20, marginBottom: 12, fontWeight: '500' },
-    restoreBtn: { paddingVertical: 8, paddingHorizontal: 16 },
-    restoreText: { color: 'rgba(255,255,255,0.6)', fontSize: 14, fontWeight: '700', textDecorationLine: 'underline' },
+
+    /* Header */
+    header: { position: 'absolute', right: 16, zIndex: 100 },
+    closeBtn: {
+        width: 34, height: 34, borderRadius: 17,
+        backgroundColor: 'rgba(255,255,255,0.06)',
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+        justifyContent: 'center', alignItems: 'center',
+    },
+
+    scroll: { paddingHorizontal: 20, paddingTop: 50 },
+
+    /* Hero */
+    heroWrap: { alignItems: 'center', justifyContent: 'center', marginBottom: 28, height: 120 },
+    heroGlow: {
+        position: 'absolute', width: 160, height: 160, borderRadius: 80,
+        backgroundColor: '#A855F7',
+    },
+    heroRing: {
+        position: 'absolute', width: 110, height: 110, borderRadius: 55,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    heroRingGradient: {
+        width: 110, height: 110, borderRadius: 55,
+        opacity: 0.2,
+    },
+    heroIconWrap: { zIndex: 10 },
+    heroIconBg: {
+        width: 76, height: 76, borderRadius: 26,
+        justifyContent: 'center', alignItems: 'center',
+        shadowColor: '#A855F7',
+        shadowOffset: { width: 0, height: 12 },
+        shadowOpacity: 0.5,
+        shadowRadius: 24,
+        elevation: 16,
+    },
+
+    /* Title */
+    titleWrap: { alignItems: 'center', marginBottom: 28 },
+    title: {
+        fontSize: 34, fontFamily: 'Pacifico_400Regular',
+        color: '#fff', marginBottom: 10,
+    },
+    subtitle: {
+        fontSize: 15, color: 'rgba(255,255,255,0.55)',
+        textAlign: 'center', lineHeight: 22, paddingHorizontal: 16,
+    },
+
+    /* Feature Strip */
+    featureStrip: {
+        flexDirection: 'row', flexWrap: 'wrap',
+        gap: 10, marginBottom: 32,
+        justifyContent: 'center',
+    },
+    featureChip: {
+        flexDirection: 'row', alignItems: 'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderRadius: 14, paddingVertical: 10, paddingHorizontal: 12,
+        borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)',
+        width: '47%' as any,
+    },
+    featureChipIcon: {
+        width: 32, height: 32, borderRadius: 10,
+        justifyContent: 'center', alignItems: 'center',
+        marginRight: 10,
+    },
+    featureChipText: { flex: 1 },
+    featureChipTitle: { fontSize: 13, fontWeight: '700', color: '#fff', marginBottom: 1 },
+    featureChipDesc: { fontSize: 11, color: 'rgba(255,255,255,0.4)', fontWeight: '500' },
+
+    /* Plans */
+    plansWrap: { gap: 12 },
+
+    planCard: {
+        borderRadius: 20, overflow: 'hidden',
+        borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.06)',
+        backgroundColor: 'rgba(255,255,255,0.03)',
+        padding: 18,
+        position: 'relative',
+    },
+    planCardSelected: {
+        borderColor: 'rgba(168,85,247,0.5)',
+        backgroundColor: 'rgba(168,85,247,0.04)',
+    },
+
+    saveBadge: {
+        position: 'absolute', top: -1, right: 20,
+        borderBottomLeftRadius: 8, borderBottomRightRadius: 8,
+        overflow: 'hidden',
+    },
+    saveBadgeGrad: {
+        paddingHorizontal: 10, paddingVertical: 4,
+    },
+    saveBadgeText: {
+        color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 1.2,
+    },
+
+    planRow: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    },
+    planLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+    planRight: { alignItems: 'flex-end' },
+
+    radioOuter: {
+        width: 22, height: 22, borderRadius: 11,
+        borderWidth: 2, borderColor: 'rgba(255,255,255,0.15)',
+        justifyContent: 'center', alignItems: 'center',
+    },
+    radioOuterActive: { borderColor: '#A855F7' },
+    radioInner: { width: 10, height: 10, borderRadius: 5 },
+
+    planTextWrap: { flex: 1 },
+    planName: { fontSize: 16, fontWeight: '800', color: '#fff', marginBottom: 3 },
+    planTrial: { fontSize: 12, color: 'rgba(255,255,255,0.45)', fontWeight: '600' },
+    planPrice: { fontSize: 20, fontWeight: '900', color: '#fff' },
+    planPeriod: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '600' },
+
+    /* Footer */
+    footer: { position: 'absolute', bottom: 0, left: 0, right: 0 },
+    footerGradient: { position: 'absolute', top: -60, left: 0, right: 0, bottom: 0 },
+    footerContent: { paddingHorizontal: 20, paddingTop: 8 },
+
+    ctaBtnWrap: { position: 'relative' },
+    ctaGlow: {
+        position: 'absolute', top: -4, left: 20, right: 20, bottom: -4,
+        borderRadius: 30,
+        backgroundColor: '#A855F7',
+    },
+    ctaBtn: {
+        borderRadius: 28, overflow: 'hidden',
+        shadowColor: '#A855F7',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.4,
+        shadowRadius: 20,
+        elevation: 12,
+    },
+    ctaGrad: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        gap: 10, paddingVertical: 18, borderRadius: 28,
+    },
+    ctaText: { color: '#fff', fontSize: 17, fontWeight: '900', letterSpacing: 0.5 },
+    ctaArrow: {
+        width: 28, height: 28, borderRadius: 14,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center', alignItems: 'center',
+    },
+
+    footerLinks: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+        gap: 8, marginTop: 16,
+    },
+    footerLinkText: { fontSize: 13, color: 'rgba(255,255,255,0.4)', fontWeight: '500' },
+    dot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.25)' },
+    restoreText: {
+        fontSize: 13, color: 'rgba(255,255,255,0.55)', fontWeight: '700',
+        textDecorationLine: 'underline',
+    },
 });

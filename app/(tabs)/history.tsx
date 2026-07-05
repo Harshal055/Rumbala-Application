@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, Dimensions, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, StatusBar, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -10,7 +10,6 @@ import { useShallow } from 'zustand/react/shallow';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles } from '../../src/constants/glass';
 
-const { width } = Dimensions.get('window');
 
 const BG_COLORS = ['#FDFCFB', '#E6E6FA', '#F0F8FF'];
 
@@ -33,6 +32,7 @@ const getRelativeTime = (dateStr: string) => {
 
 export default function HistoryScreen() {
     const router = useRouter();
+    const { width } = useWindowDimensions();
     const { history } = useStore(useShallow(state => ({
         history: state.history,
     })));
@@ -88,7 +88,7 @@ export default function HistoryScreen() {
                                 
                                 {entry.proofUri && (
                                     <View style={styles.proofContainer}>
-                                        <Image source={{ uri: entry.proofUri }} style={styles.proofImage} />
+                                        <Image source={{ uri: entry.proofUri }} style={styles.proofImage} resizeMode="cover" />
                                     </View>
                                 )}
                                 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView,
-    Modal, Dimensions, StatusBar, Platform
+    Modal, StatusBar, Platform, useWindowDimensions
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
@@ -25,27 +25,28 @@ import { getOfferings, purchasePackage } from '../../src/services/revenueCatServ
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../../src/constants/glass';
 
-const { width } = Dimensions.get('window');
 
 const BG_COLORS = ['#FFFAF0', '#FFE4E1', '#E6E6FA']; // Soft, elegant base for glass
 
 const VIBES = [
-    { key: 'all', label: 'All', color: '#FF6B35' },
-    { key: 'fun', label: 'Fun', color: '#FF9800' },
-    { key: 'romantic', label: 'Romantic', color: '#FF1493' },
-    { key: 'spicy', label: 'Spicy', color: '#EF4444' },
-    { key: 'ldr', label: 'LDR', color: '#8B5CF6' },
+    { key: 'all', label: 'All', color: '#FF6B35', premium: false },
+    { key: 'fun', label: 'Fun', color: '#FF9800', premium: false },
+    { key: 'romantic', label: 'Romantic', color: '#FF1493', premium: true },
+    { key: 'spicy', label: 'Spicy', color: '#EF4444', premium: true },
+    { key: 'ldr', label: 'LDR', color: '#8B5CF6', premium: true },
 ] as const;
 
 export default function TabHomeScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
+    const { width } = useWindowDimensions();
     const {
         partner1, partner2, cardCount,
         lastFreeClaimDate, claimWeeklyFree, hydrate,
         selectedVibe, setSelectedVibe, scores, addPoint, addHistoryEntry,
         isPro, lastPaywallShown, setLastPaywallShown, showAlert,
-        drawCard, updateStreak, syncWithSupabase
+        drawCard, updateStreak, syncWithSupabase,
+        hasHydrated
     } = useStore(useShallow((state: any) => ({
         partner1: state.partner1,
         partner2: state.partner2,
@@ -65,6 +66,7 @@ export default function TabHomeScreen() {
         drawCard: state.drawCard,
         updateStreak: state.updateStreak,
         syncWithSupabase: state.syncWithSupabase,
+        hasHydrated: state.hasHydrated,
     })));
 
     const [currentCard, setCurrentCard] = useState<DareCard | null>(null);
@@ -84,6 +86,9 @@ export default function TabHomeScreen() {
 
     useEffect(() => {
         hydrate();
+    }, [hydrate]);
+
+    useEffect(() => {
         pulseScale.value = withRepeat(
             withSequence(
                 withTiming(1.06, { duration: 1200, easing: Easing.inOut(Easing.ease) }),
@@ -97,6 +102,7 @@ export default function TabHomeScreen() {
             ), -1, true
         );
 
+        /*
         if (!isPro) {
             const now = new Date();
             if (!lastPaywallShown) {
@@ -112,13 +118,25 @@ export default function TabHomeScreen() {
                 }
             }
         }
-    }, [isPro, lastPaywallShown]);
-    
+        */
+    }, []);
+
     useFocusEffect(
         React.useCallback(() => {
-            useStore.getState().syncWithSupabase();
+            const store = useStore.getState();
+            const now = Date.now();
+            const lastSync = (store as any)._lastSyncTs || 0;
+            if (now - lastSync > 60000) {
+                (store as any)._lastSyncTs = now;
+                store.syncWithSupabase();
+            }
         }, [])
     );
+
+    // Prevent header flicker by waiting for stored names to hydrate
+    if (!hasHydrated) {
+        return null;
+    }
 
     const pulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: pulseScale.value }] }));
     const glowStyle = useAnimatedStyle(() => ({ opacity: glowO.value }));
@@ -129,9 +147,9 @@ export default function TabHomeScreen() {
     }));
 
     const handleDrawCard = async () => {
-        const currentStore = useStore.getState();
-        if (!currentStore.isPro && currentStore.cardCount <= 0 && currentStore.isAuthenticated) {
-            await currentStore.syncWithSupabase();
+        const store = useStore.getState();
+        if (!store.isPro && store.cardCount <= 0 && store.isAuthenticated) {
+            await store.syncWithSupabase();
         }
 
         if (cardsPlayed > 0 && cardsPlayed % 5 === 0) {
@@ -147,7 +165,7 @@ export default function TabHomeScreen() {
             ]);
             return;
         }
-        const drawn = useStore.getState().drawCard(selectedVibe);
+        const drawn = store.drawCard(selectedVibe);
         if (!drawn) {
             showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck and keep the fun going.', [
                 { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
@@ -160,7 +178,7 @@ export default function TabHomeScreen() {
         setIsFlipped(false);
         setCardsPlayed(p => p + 1);
         setHintRevealed(false);
-        useStore.getState().updateStreak();
+        store.updateStreak();
     };
 
     const handleAction = (action: 'done' | 'skip' | 'proof') => {
@@ -222,8 +240,8 @@ export default function TabHomeScreen() {
                 <StatusBar barStyle="dark-content" />
 
                 {/* ── Header ── */}
-                <Animated.View 
-                    entering={FadeInDown.delay(100).duration(600)} 
+                <Animated.View
+                    entering={FadeInDown.delay(100).duration(600)}
                     renderToHardwareTextureAndroid={true}
                     style={[styles.header, glassStyles.header]}
                 >
@@ -234,9 +252,9 @@ export default function TabHomeScreen() {
                         </Text>
                     </View>
                     <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <TouchableOpacity 
-                            style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]} 
-                            activeOpacity={0.8} 
+                        <TouchableOpacity
+                            style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]}
+                            activeOpacity={0.8}
                             onPress={() => router.push('/(tabs)/shop')}
                         >
                             <Ionicons name={isPro ? "diamond" : "albums-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
@@ -251,20 +269,20 @@ export default function TabHomeScreen() {
                 <View style={styles.playArea}>
                     {currentCard ? (
                         <View style={styles.cardWrapper}>
-                            <Card card={currentCard} isFlipped={isFlipped} onFlip={() => setIsFlipped(true)} />
+                            <Card card={currentCard} isFlipped={isFlipped} onFlip={() => setIsFlipped(prev => !prev)} />
                             {isFlipped && (
-                            <Animated.View 
-                                entering={FadeInDown.delay(300).duration(400)} 
-                                renderToHardwareTextureAndroid={Platform.OS === 'android'}
-                                style={styles.actionRow}
-                            >
+                                <Animated.View
+                                    entering={FadeInDown.delay(300).duration(400)}
+                                    renderToHardwareTextureAndroid={Platform.OS === 'android'}
+                                    style={styles.actionRow}
+                                >
                                     <TouchableOpacity style={styles.actionBtn} onPress={() => handleAction('skip')} activeOpacity={0.8}>
                                         <LinearGradient colors={['#FFD93D', '#FF9800']} style={styles.actionGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                                             <Ionicons name="play-skip-forward" size={18} color="#1a1a1a" />
                                             <Text style={styles.actionTextDark}>Skip</Text>
                                         </LinearGradient>
                                     </TouchableOpacity>
-                                    
+
                                     <TouchableOpacity style={styles.actionBtn} onPress={() => handleAction('done')} activeOpacity={0.8}>
                                         <LinearGradient colors={['#10B981', '#059669']} style={styles.actionGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                                             <Ionicons name="checkmark-circle" size={18} color="#fff" />
@@ -305,25 +323,30 @@ export default function TabHomeScreen() {
 
                 {/* ── Bottom Section ── */}
                 {!currentCard && (
-                    <Animated.View 
-                        entering={FadeInDown.delay(400).duration(600)} 
+                    <Animated.View
+                        entering={FadeInDown.delay(400).duration(600)}
                         renderToHardwareTextureAndroid={Platform.OS === 'android'}
                         style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 24) }]}
                     >
                         {/* Vibe Filters */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-                            {VIBES.map(({ key, label, color }) => {
+                            {VIBES.map(({ key, label, color, premium }) => {
                                 const active = activeVibeKey === key;
+                                const isLocked = premium && !isPro;
                                 return (
                                     <TouchableOpacity
                                         key={key}
                                         style={[
-                                            styles.pill, 
-                                            glassStyles.container, 
+                                            styles.pill,
+                                            glassStyles.container,
                                             active && { ...styles.pillActive, borderColor: color }
                                         ]}
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            if (isLocked) {
+                                                setShowPaywall(true);
+                                                return;
+                                            }
                                             if (key === 'ldr') {
                                                 router.push('/(tabs)/ldr');
                                             } else {
@@ -332,8 +355,11 @@ export default function TabHomeScreen() {
                                         }}
                                         activeOpacity={0.7}
                                     >
-                                        <View style={[styles.pillImage, { backgroundColor: color, borderRadius: 11 }]} />
+                                        <View style={[styles.pillImage, { backgroundColor: color, borderRadius: 11 }]}>
+                                            {isLocked && <Ionicons name="lock-closed" size={10} color="#fff" style={{ position: 'absolute', top: 6, left: 6 }} />}
+                                        </View>
                                         <Text style={[styles.pillText, active && { color }]}>{label}</Text>
+                                        {isLocked && <Ionicons name="diamond" size={10} color={color} style={{ marginLeft: 2 }} />}
                                     </TouchableOpacity>
                                 );
                             })}
@@ -344,8 +370,8 @@ export default function TabHomeScreen() {
                 {/* ── Camera Modal ── */}
                 <CameraModal visible={showCamera} onClose={() => setShowCamera(false)} onPhotoTaken={handlePhotoTaken} />
                 {/* Paywall Contextual Popup */}
-                <PaywallModal 
-                    visible={showPaywall} 
+                <PaywallModal
+                    visible={showPaywall}
                     onClose={() => setShowPaywall(false)}
                     onSubscribe={handlePaywallSubscribe}
                 />

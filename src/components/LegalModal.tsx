@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
         maxHeight: '80%',
         borderRadius: 32,
         padding: 24,
-        elevation: 0,
+        elevation: 4,
     },
     header: {
         flexDirection: 'row',

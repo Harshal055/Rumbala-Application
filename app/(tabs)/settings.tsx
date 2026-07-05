@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert,
-    TextInput, Modal, FlatList, Image, useWindowDimensions, StatusBar,
+    View, Text, StyleSheet, ScrollView, TouchableOpacity,
+    TextInput, Modal, FlatList, useWindowDimensions, StatusBar,
     ActivityIndicator, KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -10,26 +10,26 @@ import { useStore, HistoryEntry } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import * as Sharing from 'expo-sharing';
-import { captureRef } from 'react-native-view-shot';
-import { typography } from '../../src/constants/typography';
 import Animated, {
-    useSharedValue, useAnimatedStyle, withTiming, withDelay,
-    withSpring, Easing, FadeInDown
+    FadeInDown,
+    FadeInUp,
+    useSharedValue,
+    useAnimatedStyle,
+    withRepeat,
+    withSequence,
+    withTiming,
+    withSpring,
+    withDelay,
+    Easing,
+    interpolate,
+    Extrapolation,
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../src/services/supabase';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../../src/constants/glass';
 import { sendFeedback, sendBugReport } from '../../src/services/api';
-
-interface PurchaseHistoryItem {
-    id: string;
-    date: string;
-    pack: string;
-    price: string;
-    count: number;
-}
+import { getPurchaseHistory, PurchaseHistoryRecord } from '../../src/services/revenueCatService';
 
 const BG_COLORS = ['#F5F0F0', '#EED9C4', '#D4E2D4'];
 
@@ -56,13 +56,48 @@ export default function SettingsScreen() {
     const partnerWins = scores?.partner2 || 0;
     const totalGames = wins + partnerWins;
     const winRate = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
+    const displayPartner1 = partner1?.trim() || 'You';
+    const displayPartner2 = partner2?.trim() || 'Partner';
+
+    // ── Animations ──
+    const emojiPulse = useSharedValue(1);
+    const profileGlow = useSharedValue(0.4);
+    const statsSlide = useSharedValue(0);
+
+    useEffect(() => {
+        emojiPulse.value = withRepeat(
+            withSequence(
+                withTiming(1.2, { duration: 500, easing: Easing.out(Easing.ease) }),
+                withTiming(1, { duration: 400, easing: Easing.in(Easing.ease) }),
+                withTiming(1.12, { duration: 350, easing: Easing.out(Easing.ease) }),
+                withTiming(1, { duration: 500, easing: Easing.in(Easing.ease) }),
+                withDelay(2000, withTiming(1, { duration: 0 }))
+            ), -1, false
+        );
+        profileGlow.value = withRepeat(
+            withSequence(
+                withTiming(0.7, { duration: 2500, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.3, { duration: 2500, easing: Easing.inOut(Easing.ease) })
+            ), -1, true
+        );
+        statsSlide.value = withDelay(400, withSpring(1, { damping: 14, stiffness: 100 }));
+    }, []);
+
+    const emojiAnimStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: emojiPulse.value }],
+    }));
+    const glowAnimStyle = useAnimatedStyle(() => ({
+        opacity: profileGlow.value,
+    }));
+    const statsAnimStyle = useAnimatedStyle(() => ({
+        opacity: statsSlide.value,
+        transform: [{ translateY: interpolate(statsSlide.value, [0, 1], [20, 0], Extrapolation.CLAMP) }],
+    }));
 
     const [showEditModal, setShowEditModal] = useState(false);
     const [showPurchaseHistory, setShowPurchaseHistory] = useState(false);
-    const [showGameHistory, setShowGameHistory] = useState(false);
     const [editPartner1, setEditPartner1] = useState(partner1 || '');
     const [editPartner2, setEditPartner2] = useState(partner2 || '');
-    const entryRefs = useRef<{ [key: string]: View | null }>({}); 
 
     const [memberSince, setMemberSince] = useState<string | null>(null);
 
@@ -74,6 +109,8 @@ export default function SettingsScreen() {
     const [showBugModal, setShowBugModal] = useState(false);
     const [bugMessage, setBugMessage] = useState('');
     const [loadingBug, setLoadingBug] = useState(false);
+    const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryRecord[]>([]);
+    const [loadingPurchaseHistory, setLoadingPurchaseHistory] = useState(false);
 
     useEffect(() => {
         const fetchUserInfo = async () => {
@@ -88,10 +125,25 @@ export default function SettingsScreen() {
         fetchUserInfo();
     }, []);
 
-    const [purchaseHistory] = useState<PurchaseHistoryItem[]>([
-        { id: '1', date: '2026-02-20', pack: '5-Pack', price: '₹19', count: 5 },
-        { id: '2', date: '2026-02-15', pack: '10-Pack', price: '₹39', count: 10 },
-    ]);
+    useEffect(() => {
+        if (!showPurchaseHistory) return;
+        let isCancelled = false;
+
+        const loadPurchaseHistory = async () => {
+            setLoadingPurchaseHistory(true);
+            const records = await getPurchaseHistory();
+            if (!isCancelled) {
+                setPurchaseHistory(records);
+                setLoadingPurchaseHistory(false);
+            }
+        };
+
+        loadPurchaseHistory();
+
+        return () => {
+            isCancelled = true;
+        };
+    }, [showPurchaseHistory]);
 
     const handleSaveProfile = () => {
         if (!editPartner1.trim()) {
@@ -119,21 +171,6 @@ export default function SettingsScreen() {
             router.replace('/login');
         } catch {
             showAlert('Error', 'Failed to logout. Please try again.');
-        }
-    };
-
-    const handleShareGameMemory = async (id: string) => {
-        try {
-            const viewToCapture = entryRefs.current[id];
-            if (!viewToCapture) return;
-            const uri = await captureRef(viewToCapture, { format: 'png', quality: 0.9 });
-            if (await Sharing.isAvailableAsync()) {
-                await Sharing.shareAsync(uri, { dialogTitle: 'Share your Rumbala Moment!', mimeType: 'image/png' });
-            } else { 
-                showAlert('Sharing Unavailable', 'Sharing is not available on this device.'); 
-            }
-        } catch { 
-            showAlert('Error', 'Could not share image. Please try again.'); 
         }
     };
 
@@ -201,13 +238,16 @@ export default function SettingsScreen() {
                     </View>
 
                     {/* ─── Profile Hero Card ─── */}
-                    <Animated.View entering={FadeInDown.duration(500)} style={[styles.profileCard, glassStyles.container]}>
+                    <Animated.View entering={FadeInDown.duration(600).springify()} style={[styles.profileCard, glassStyles.container]}>
                         <LinearGradient
-                            colors={['rgba(255, 107, 53, 0.8)', 'rgba(255, 140, 0, 0.6)']}
+                            colors={['rgba(255, 107, 53, 0.85)', 'rgba(255, 140, 0, 0.65)']}
                             start={{ x: 0, y: 0 }}
                             end={{ x: 1, y: 1 }}
                             style={styles.profileGradient}
                         >
+                            {/* Animated glow behind avatar */}
+                            <Animated.View style={[styles.profileHeroGlow, glowAnimStyle]} />
+
                             <TouchableOpacity
                                 style={[styles.editProfileBtn, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.2)' }]}
                                 onPress={() => {
@@ -226,25 +266,25 @@ export default function SettingsScreen() {
                                     colors={['#FFB6C1', '#FFC0CB']}
                                     style={styles.avatarInner}
                                 >
-                                    <Text style={styles.avatarEmoji}>💕</Text>
+                                    <Animated.Text style={[styles.avatarEmoji, emojiAnimStyle]}>💕</Animated.Text>
                                 </LinearGradient>
                             </View>
 
-                            <Text style={styles.coupleLabel}>Your Couple</Text>
-                            <Text style={styles.coupleNames}>{partner1} & {partner2}</Text>
+                            <Animated.Text entering={FadeInDown.delay(150).duration(400)} style={styles.coupleLabel}>Your Couple</Animated.Text>
+                            <Animated.Text entering={FadeInDown.delay(200).duration(400)} style={styles.coupleNames}>{partner1} & {partner2}</Animated.Text>
 
                             {selectedVibe && (
-                                <View style={[styles.vibeBadge, glassStyles.container]}>
+                                <Animated.View entering={FadeInDown.delay(250).duration(400).springify()} style={[styles.vibeBadge, glassStyles.container]}>
                                     <Text style={styles.vibeEmoji}>
                                         {selectedVibe === 'fun' ? '✨' : selectedVibe === 'romantic' ? '❤️' : '🔥'}
                                     </Text>
                                     <Text style={styles.vibeName}>
                                         {selectedVibe.charAt(0).toUpperCase() + selectedVibe.slice(1)} Vibe
                                     </Text>
-                                </View>
+                                </Animated.View>
                             )}
 
-                            <View style={[styles.profileStatsRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.1)' }]}>
+                            <Animated.View style={[styles.profileStatsRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.1)' }, statsAnimStyle]}>
                                 <View style={styles.profileStatItem}>
                                     <Text style={styles.profileStatValue}>{totalGames}</Text>
                                     <Text style={styles.profileStatLabel}>Games</Text>
@@ -257,19 +297,19 @@ export default function SettingsScreen() {
                                 <View style={styles.profileStatDivider} />
                                 <View style={styles.profileStatItem}>
                                     <Text style={styles.profileStatValue}>{wins}</Text>
-                                    <Text style={styles.profileStatLabel}>{partner1?.split(' ')[0]}</Text>
+                                    <Text style={styles.profileStatLabel}>{displayPartner1.split(' ')[0]}</Text>
                                 </View>
                                 <View style={styles.profileStatDivider} />
                                 <View style={styles.profileStatItem}>
                                     <Text style={styles.profileStatValue}>{partnerWins}</Text>
-                                    <Text style={styles.profileStatLabel}>{partner2?.split(' ')[0]}</Text>
+                                    <Text style={styles.profileStatLabel}>{displayPartner2.split(' ')[0]}</Text>
                                 </View>
-                            </View>
+                            </Animated.View>
                         </LinearGradient>
                     </Animated.View>
 
                     {/* ─── Account Info Section ─── */}
-                    <Animated.View entering={FadeInDown.delay(150).duration(500)} style={styles.section}>
+                    <Animated.View entering={FadeInDown.delay(200).duration(500).springify()} style={styles.section}>
                         <Text style={styles.sectionLabel}>ACCOUNT INFO</Text>
                         <View style={[styles.card, glassStyles.container]}>
                             <TouchableOpacity
@@ -342,7 +382,7 @@ export default function SettingsScreen() {
                     </Animated.View>
 
                     {/* ─── Profile Section ─── */}
-                    <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.section}>
+                    <Animated.View entering={FadeInDown.delay(300).duration(500).springify()} style={styles.section}>
                         <Text style={styles.sectionLabel}>PROFILE</Text>
                         <View style={[styles.card, glassStyles.container]}>
                             <SettingItem
@@ -358,7 +398,7 @@ export default function SettingsScreen() {
                     </Animated.View>
 
                     {/* ─── Account Section ─── */}
-                    <Animated.View entering={FadeInDown.delay(250).duration(500)} style={styles.section}>
+                    <Animated.View entering={FadeInDown.delay(400).duration(500).springify()} style={styles.section}>
                         <Text style={styles.sectionLabel}>ACCOUNT</Text>
                         <View style={[styles.card, glassStyles.container]}>
                             <SettingItem
@@ -390,7 +430,7 @@ export default function SettingsScreen() {
                     </Animated.View>
 
                     {/* ─── Logout ─── */}
-                    <Animated.View entering={FadeInDown.delay(300).duration(500)}>
+                    <Animated.View entering={FadeInUp.delay(500).duration(400).springify()}>
                         <TouchableOpacity style={[styles.logoutBtn, glassStyles.container, { backgroundColor: 'rgba(239, 68, 68, 0.05)', borderColor: 'rgba(239, 68, 68, 0.2)' }]} onPress={handleLogout} activeOpacity={0.8}>
                             <Ionicons name="log-out-outline" size={22} color="#EF4444" />
                             <Text style={styles.logoutText}>Logout</Text>
@@ -453,24 +493,40 @@ export default function SettingsScreen() {
                                     <Ionicons name="close" size={24} color="#666" />
                                 </TouchableOpacity>
                             </View>
-                            <FlatList
-                                data={purchaseHistory} keyExtractor={i => i.id} contentContainerStyle={{ padding: 20 }}
-                                renderItem={({ item }) => (
-                                    <View style={[styles.purchaseItem, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
-                                        <View style={[styles.purchaseIcon, glassStyles.container, { backgroundColor: 'rgba(124, 58, 237, 0.1)' }]}>
-                                            <Ionicons name="bag-check" size={22} color="#7C3AED" />
+                            {loadingPurchaseHistory ? (
+                                <View style={styles.purchaseEmptyWrap}>
+                                    <ActivityIndicator size="small" color="#7C3AED" />
+                                    <Text style={styles.purchaseSub}>Loading purchases...</Text>
+                                </View>
+                            ) : purchaseHistory.length === 0 ? (
+                                <View style={styles.purchaseEmptyWrap}>
+                                    <Ionicons name="receipt-outline" size={28} color="#bbb" />
+                                    <Text style={styles.purchaseSub}>No purchases found yet.</Text>
+                                </View>
+                            ) : (
+                                <FlatList
+                                    data={purchaseHistory}
+                                    keyExtractor={i => i.id}
+                                    contentContainerStyle={{ padding: 20 }}
+                                    renderItem={({ item }) => (
+                                        <View style={[styles.purchaseItem, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]} 
+                                        > 
+                                            <View style={[styles.purchaseIcon, glassStyles.container, { backgroundColor: item.type === 'subscription' ? 'rgba(255, 107, 53, 0.12)' : 'rgba(124, 58, 237, 0.12)' }]} 
+                                            > 
+                                                <Ionicons name={item.type === 'subscription' ? 'diamond' : 'bag-check'} size={22} color={item.type === 'subscription' ? '#FF6B35' : '#7C3AED'} />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={styles.purchaseTitle} numberOfLines={1}>{item.title}</Text>
+                                                <Text style={styles.purchaseSub}>{new Date(item.date).toLocaleDateString()}</Text>
+                                            </View>
+                                            <View style={{ alignItems: 'flex-end' }}>
+                                                <Text style={styles.purchasePrice}>{item.price}</Text>
+                                                <Text style={styles.purchaseSub}>{item.type === 'consumable' ? `+${item.cardsAdded || 0} cards` : 'Subscription'}</Text>
+                                            </View>
                                         </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.purchaseTitle}>{item.pack}</Text>
-                                            <Text style={styles.purchaseSub}>{new Date(item.date).toLocaleDateString()}</Text>
-                                        </View>
-                                        <View style={{ alignItems: 'flex-end' }}>
-                                            <Text style={styles.purchasePrice}>{item.price}</Text>
-                                            <Text style={styles.purchaseSub}>{item.count} cards</Text>
-                                        </View>
-                                    </View>
-                                )}
-                            />
+                                    )}
+                                />
+                            )}
                         </Animated.View>
                             </TouchableWithoutFeedback>
                         </View>
@@ -599,16 +655,29 @@ export default function SettingsScreen() {
 function SettingItem({ icon, iconColor, title, subtitle, onPress }: {
     icon: string; iconColor: string; title: string; subtitle: string; onPress: () => void;
 }) {
+    const pressScale = useSharedValue(1);
+    const pressStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: pressScale.value }],
+    }));
+
     return (
-        <TouchableOpacity style={styles.settingRow} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }} activeOpacity={0.6}>
-            <View style={[styles.settingIcon, glassStyles.container, { backgroundColor: `${iconColor}15` }]}>
-                <Ionicons name={icon as any} size={22} color={iconColor} />
-            </View>
-            <View style={styles.settingInfo}>
-                <Text style={styles.settingTitle}>{title}</Text>
-                <Text style={styles.settingSubtitle}>{subtitle}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color="#aaa" />
+        <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onPress(); }}
+            onPressIn={() => { pressScale.value = withSpring(0.97, { damping: 15 }); }}
+            onPressOut={() => { pressScale.value = withSpring(1, { damping: 15 }); }}
+            activeOpacity={1}
+        >
+            <Animated.View style={[{ flexDirection: 'row', alignItems: 'center', flex: 1 }, pressStyle]}>
+                <View style={[styles.settingIcon, glassStyles.container, { backgroundColor: `${iconColor}15` }]}>
+                    <Ionicons name={icon as any} size={22} color={iconColor} />
+                </View>
+                <View style={styles.settingInfo}>
+                    <Text style={styles.settingTitle}>{title}</Text>
+                    <Text style={styles.settingSubtitle}>{subtitle}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#aaa" />
+            </Animated.View>
         </TouchableOpacity>
     );
 }
@@ -623,8 +692,12 @@ const styles = StyleSheet.create({
     navTitle: { fontFamily: 'Pacifico_400Regular', fontSize: 24, color: '#1a1a1a' },
 
     profileCard: { borderRadius: 24, overflow: 'hidden', marginBottom: 24, padding: 0 },
-    profileGradient: { paddingTop: 28, paddingBottom: 24, paddingHorizontal: 20, alignItems: 'center' },
-    editProfileBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+    profileGradient: { paddingTop: 28, paddingBottom: 24, paddingHorizontal: 20, alignItems: 'center', position: 'relative' },
+    profileHeroGlow: {
+        position: 'absolute', width: 160, height: 160, borderRadius: 80,
+        backgroundColor: 'rgba(255,255,255,0.25)', top: -20, alignSelf: 'center',
+    },
+    editProfileBtn: { position: 'absolute', top: 16, right: 16, width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', zIndex: 10 },
     avatarRing: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: 'rgba(255,255,255,0.4)', padding: 3, marginBottom: 14 },
     avatarInner: { flex: 1, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
     avatarEmoji: { fontSize: 36 },
@@ -686,6 +759,7 @@ const styles = StyleSheet.create({
     purchaseTitle: { fontSize: 16, fontWeight: '700', color: '#1a1a1a', marginBottom: 2 },
     purchaseSub: { fontSize: 12, color: '#666', fontWeight: '500' },
     purchasePrice: { fontSize: 16, fontWeight: '800', color: '#FF6B35', marginBottom: 2 },
+    purchaseEmptyWrap: { alignItems: 'center', justifyContent: 'center', paddingVertical: 36, gap: 8 },
 
     ratingRow: { flexDirection: 'row', gap: 10, justifyContent: 'center', marginVertical: 10 },
     textArea: { borderRadius: 16, paddingHorizontal: 18, paddingVertical: 16, fontSize: 16, color: '#1a1a1a', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.05)', height: 120, textAlignVertical: 'top' },

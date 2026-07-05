@@ -1,28 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    TextInput, FlatList, StatusBar, ActivityIndicator, Dimensions,
-    Modal, Alert, Image
+    TextInput, FlatList, StatusBar, ActivityIndicator,
+    Modal, Alert, Image, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { 
-    getFeedbacks, getAdminStats, adminSearchUsers, adminUpdateUserCards, 
+import {
+    getFeedbacks, getAdminStats, adminSearchUsers, adminUpdateUserCards,
     adminGrantPro, adminGetRevenueStats, adminGetGameplayStats,
-    adminGetActiveRooms, adminCloseRoom, adminGetCards, adminUpsertCard, 
+    adminGetActiveRooms, adminCloseRoom, adminGetCards, adminUpsertCard,
     adminDeleteCard, adminGetBugReports
 } from '../src/services/api';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
 import Animated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 
-const { width } = Dimensions.get('window');
 
-const ADMIN_EMAIL = 'adminhr@andx.com';
-const ADMIN_PASS = '123456';
+
 
 type TabType = 'Overview' | 'Users' | 'Revenue' | 'Gameplay' | 'LDR' | 'CMS' | 'Support';
 
@@ -63,6 +61,7 @@ const getTypeColor = (type: string) => {
 
 export default function AdminScreen() {
     const router = useRouter();
+    const { width } = useWindowDimensions();
     const [isLoggedIn, setIsLoggedIn] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -86,14 +85,28 @@ export default function AdminScreen() {
     const [showUserModal, setShowUserModal] = useState(false);
     const [showCardModal, setShowCardModal] = useState(false);
 
-    const handleLogin = () => {
-        if (email.trim().toLowerCase() === ADMIN_EMAIL && password === ADMIN_PASS) {
+    const handleLogin = async () => {
+        try {
+            const { supabase } = await import('../src/services/supabase');
+            const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+            if (error) throw error;
+            
+            // Check if user is actually an admin by testing a protected endpoint
+            const { count, error: countError } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            
+            if (countError || count === null) {
+                await supabase.auth.signOut();
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                alert('You are not authorized as an admin.');
+                return;
+            }
+            
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             setIsLoggedIn(true);
             loadOverview();
-        } else {
+        } catch (e: any) {
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            alert('Invalid Admin Credentials');
+            alert(e?.message || 'Invalid Admin Credentials');
         }
     };
 
@@ -107,16 +120,16 @@ export default function AdminScreen() {
         finally { setLoading(false); }
     };
 
-    const loadRevenue = async () => { setLoading(true); try { setRevenueData(await adminGetRevenueStats()); } catch(e){} finally {setLoading(false);} };
-    const loadGameplay = async () => { setLoading(true); try { setGameplayData(await adminGetGameplayStats()); } catch(e){} finally {setLoading(false);} };
-    const loadLDR = async () => { setLoading(true); try { setRooms(await adminGetActiveRooms()); } catch(e){} finally {setLoading(false);} };
-    const loadCMS = async () => { setLoading(true); try { setDbCards(await adminGetCards()); } catch(e){} finally {setLoading(false);} };
-    const loadSupport = async () => { setLoading(true); try { setBugs(await adminGetBugReports()); setFeedbacks(await getFeedbacks()); } catch(e){} finally {setLoading(false);} };
+    const loadRevenue = async () => { setLoading(true); try { setRevenueData(await adminGetRevenueStats()); } catch (e) { } finally { setLoading(false); } };
+    const loadGameplay = async () => { setLoading(true); try { setGameplayData(await adminGetGameplayStats()); } catch (e) { } finally { setLoading(false); } };
+    const loadLDR = async () => { setLoading(true); try { setRooms(await adminGetActiveRooms()); } catch (e) { } finally { setLoading(false); } };
+    const loadCMS = async () => { setLoading(true); try { setDbCards(await adminGetCards()); } catch (e) { } finally { setLoading(false); } };
+    const loadSupport = async () => { setLoading(true); try { setBugs(await adminGetBugReports()); setFeedbacks(await getFeedbacks()); } catch (e) { } finally { setLoading(false); } };
 
     const handleTabChange = (tab: TabType) => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         setActiveTab(tab);
-        switch(tab) {
+        switch (tab) {
             case 'Overview': loadOverview(); break;
             case 'Revenue': loadRevenue(); break;
             case 'Gameplay': loadGameplay(); break;
@@ -129,17 +142,17 @@ export default function AdminScreen() {
     const handleUserSearch = async () => {
         if (!searchQuery.trim()) return;
         setLoading(true);
-        try { setUsers(await adminSearchUsers(searchQuery)); } catch(e){}
+        try { setUsers(await adminSearchUsers(searchQuery)); } catch (e) { }
         finally { setLoading(false); }
     };
 
     const handleGrantPro = async (status: boolean) => {
         try {
             await adminGrantPro(selectedUser.id, status);
-            setSelectedUser({...selectedUser, is_pro: status});
+            setSelectedUser({ ...selectedUser, is_pro: status });
             Alert.alert('Success', `Pro status ${status ? 'granted' : 'revoked'}`);
             handleUserSearch();
-        } catch(e) { Alert.alert('Error', 'Failed to update Pro status'); }
+        } catch (e) { Alert.alert('Error', 'Failed to update Pro status'); }
     };
 
     const handleSaveUser = async () => {
@@ -148,7 +161,7 @@ export default function AdminScreen() {
             setShowUserModal(false);
             Alert.alert('Success', 'User cards updated');
             handleUserSearch();
-        } catch(e) { Alert.alert('Error', 'Failed to update user'); }
+        } catch (e) { Alert.alert('Error', 'Failed to update user'); }
     };
 
     const handleUpsertCard = async () => {
@@ -157,27 +170,31 @@ export default function AdminScreen() {
             setShowCardModal(false);
             loadCMS();
             Alert.alert('Success', 'Card content updated live');
-        } catch(e) { Alert.alert('Error', 'Failed to save card'); }
+        } catch (e) { Alert.alert('Error', 'Failed to save card'); }
     };
 
     const confirmDeleteCard = (id: string) => {
         Alert.alert('Delete Card', 'Are you sure?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete', style: 'destructive', onPress: async () => {
-                await adminDeleteCard(id);
-                setShowCardModal(false);
-                loadCMS();
-            }}
+            {
+                text: 'Delete', style: 'destructive', onPress: async () => {
+                    await adminDeleteCard(id);
+                    setShowCardModal(false);
+                    loadCMS();
+                }
+            }
         ]);
     };
 
     const confirmCloseRoom = (code: string) => {
         Alert.alert('Close Room', 'Force close this session?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Close', style: 'destructive', onPress: async () => {
-                await adminCloseRoom(code);
-                loadLDR();
-            }}
+            {
+                text: 'Close', style: 'destructive', onPress: async () => {
+                    await adminCloseRoom(code);
+                    loadLDR();
+                }
+            }
         ]);
     };
 
@@ -211,9 +228,9 @@ export default function AdminScreen() {
     const renderUsers = () => (
         <View>
             <View style={styles.searchRow}>
-                <TextInput 
-                    style={[styles.searchInput, glassStyles.container]} 
-                    placeholder="Search email or UUID..." 
+                <TextInput
+                    style={[styles.searchInput, glassStyles.container]}
+                    placeholder="Search email or UUID..."
                     value={searchQuery}
                     onChangeText={setSearchQuery}
                     autoCapitalize="none"
@@ -222,7 +239,7 @@ export default function AdminScreen() {
                     <Ionicons name="search" size={24} color="#fff" />
                 </TouchableOpacity>
             </View>
-            {loading ? <ActivityIndicator color="#FF6B35" style={{marginTop: 20}} /> : (
+            {loading ? <ActivityIndicator color="#FF6B35" style={{ marginTop: 20 }} /> : (
                 users.map(u => (
                     <TouchableOpacity key={u.id} style={[styles.userCard, glassStyles.container]} onPress={() => { setSelectedUser(u); setShowUserModal(true); }}>
                         <View style={styles.userHead}>
@@ -231,8 +248,8 @@ export default function AdminScreen() {
                         </View>
                         <Text style={styles.userEmail}>{u.email}</Text>
                         <View style={styles.userFooter}>
-                            <Text style={styles.userStat}><Ionicons name="card" size={12}/> {u.card_count}</Text>
-                            <Text style={styles.userStat}><Ionicons name="calendar" size={12}/> {new Date(u.created_at).toLocaleDateString()}</Text>
+                            <Text style={styles.userStat}><Ionicons name="card" size={12} /> {u.card_count}</Text>
+                            <Text style={styles.userStat}><Ionicons name="calendar" size={12} /> {new Date(u.created_at).toLocaleDateString()}</Text>
                         </View>
                     </TouchableOpacity>
                 ))
@@ -277,7 +294,7 @@ export default function AdminScreen() {
         return (
             <View>
                 <Text style={styles.sectionTitle}>Most Popular Dares</Text>
-                {Object.entries(gameplayData.popularity).sort((a:any,b:any) => b[1] - a[1]).slice(0, 5).map(([text, count]: any) => (
+                {Object.entries(gameplayData.popularity).sort((a: any, b: any) => b[1] - a[1]).slice(0, 5).map(([text, count]: any) => (
                     <View key={text} style={[styles.popCard, glassStyles.container]}>
                         <Text style={styles.popText} numberOfLines={1}>{text}</Text>
                         <Text style={styles.popCount}>{count} completions</Text>
@@ -319,14 +336,14 @@ export default function AdminScreen() {
     const renderCMS = () => (
         <View>
             <TouchableOpacity style={styles.addNewBtn} onPress={() => { setSelectedCard({}); setShowCardModal(true); }}>
-                <LinearGradient colors={['#10B981', '#059669']} style={styles.addGrad} start={{x:0, y:0}} end={{x:1, y:1}}>
+                <LinearGradient colors={['#10B981', '#059669']} style={styles.addGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                     <Ionicons name="add" size={20} color="#fff" />
                     <Text style={styles.addText}>Add New Card</Text>
                 </LinearGradient>
             </TouchableOpacity>
             {dbCards.map(c => (
                 <TouchableOpacity key={c.id} style={[styles.cardListItem, glassStyles.container]} onPress={() => { setSelectedCard(c); setShowCardModal(true); }}>
-                    <View style={[styles.typePill, {backgroundColor: getTypeColor(c.type)}]}>
+                    <View style={[styles.typePill, { backgroundColor: getTypeColor(c.type) }]}>
                         <Text style={styles.pillText}>{c.type.toUpperCase()}</Text>
                     </View>
                     <Text style={styles.cardListText} numberOfLines={2}>{c.text}</Text>
@@ -349,7 +366,7 @@ export default function AdminScreen() {
                     <Text style={styles.bugUser}>{b.user_email || 'Anonymous'}</Text>
                 </View>
             ))}
-            <Text style={[styles.sectionTitle, {marginTop: 20}]}>User Feedback</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>User Feedback</Text>
             {feedbacks.map(f => (
                 <View key={f.id} style={[styles.fbDetailCard, glassStyles.container]}>
                     <View style={styles.fbHead}>
@@ -386,11 +403,20 @@ export default function AdminScreen() {
         );
     }
 
+    const tabIcons: Record<TabType, string> = {
+        Overview: 'grid', Users: 'people', Revenue: 'card',
+        Gameplay: 'play', LDR: 'heart', CMS: 'document-text', Support: 'help-buoy',
+    };
+
     return (
         <AnimatedBackground colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}>
             <SafeAreaView style={styles.container}>
+                <StatusBar barStyle="dark-content" />
                 <View style={[styles.header, glassStyles.header]}>
-                    <View>
+                    <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
+                        <Ionicons name="arrow-back" size={22} color="#1E293B" />
+                    </TouchableOpacity>
+                    <View style={{ flex: 1 }}>
                         <Text style={styles.headerSubtitle}>Admin Portal</Text>
                         <Text style={styles.headerTitle}>{activeTab}</Text>
                     </View>
@@ -399,32 +425,31 @@ export default function AdminScreen() {
                     </TouchableOpacity>
                 </View>
 
-                <View style={styles.mainContent}>
-                    {/* Sidebar */}
-                    <View style={styles.sidebar}>
-                        {(['Overview', 'Users', 'Revenue', 'Gameplay', 'LDR', 'CMS', 'Support'] as TabType[]).map(tab => (
-                            <TouchableOpacity key={tab} style={[styles.tabItem, activeTab === tab && styles.tabItemActive]} onPress={() => handleTabChange(tab)}>
-                                <Ionicons name={tab === 'Overview' ? 'grid' : tab === 'Users' ? 'people' : tab === 'Revenue' ? 'card' : tab === 'Gameplay' ? 'play' : tab === 'LDR' ? 'heart' : tab === 'CMS' ? 'document-text' : 'help-buoy'} size={20} color={activeTab === tab ? '#FF6B35' : '#64748B'} />
-                                <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                    
-                    <ScrollView style={styles.contentArea} contentContainerStyle={styles.scrollContent}>
-                        {activeTab === 'Overview' && renderOverview()}
-                        {activeTab === 'Users' && renderUsers()}
-                        {activeTab === 'Revenue' && renderRevenue()}
-                        {activeTab === 'Gameplay' && renderGameplay()}
-                        {activeTab === 'LDR' && renderLDR()}
-                        {activeTab === 'CMS' && renderCMS()}
-                        {activeTab === 'Support' && renderSupport()}
-                    </ScrollView>
-                </View>
+                {/* Horizontal Tab Bar */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
+                    {(['Overview', 'Users', 'Revenue', 'Gameplay', 'LDR', 'CMS', 'Support'] as TabType[]).map(tab => (
+                        <TouchableOpacity key={tab} style={[styles.tabItem, activeTab === tab && styles.tabItemActive]} onPress={() => handleTabChange(tab)}>
+                            <Ionicons name={tabIcons[tab] as any} size={18} color={activeTab === tab ? '#FF6B35' : '#64748B'} />
+                            <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>{tab}</Text>
+                        </TouchableOpacity>
+                    ))}
+                </ScrollView>
+
+                <ScrollView style={styles.contentArea} contentContainerStyle={styles.scrollContent}>
+                    {loading && <ActivityIndicator color="#FF6B35" style={{ marginVertical: 20 }} />}
+                    {activeTab === 'Overview' && renderOverview()}
+                    {activeTab === 'Users' && renderUsers()}
+                    {activeTab === 'Revenue' && renderRevenue()}
+                    {activeTab === 'Gameplay' && renderGameplay()}
+                    {activeTab === 'LDR' && renderLDR()}
+                    {activeTab === 'CMS' && renderCMS()}
+                    {activeTab === 'Support' && renderSupport()}
+                </ScrollView>
 
                 {/* Modals */}
-                <Modal 
-                    visible={showUserModal} 
-                    transparent 
+                <Modal
+                    visible={showUserModal}
+                    transparent
                     animationType="slide"
                     hardwareAccelerated={true}
                     statusBarTranslucent={true}
@@ -435,8 +460,8 @@ export default function AdminScreen() {
                             {selectedUser && (
                                 <>
                                     <Text style={styles.modalLabel}>Email: {selectedUser.email}</Text>
-                                    <TextInput style={[styles.modalInput, glassStyles.container]} defaultValue={String(selectedUser.card_count)} keyboardType="numeric" onChangeText={(v) => setSelectedUser({...selectedUser, card_count: parseInt(v)})} />
-                                    <TouchableOpacity style={[styles.actionBtn, {backgroundColor: selectedUser.is_pro ? '#EF4444' : '#6366F1'}]} onPress={() => handleGrantPro(!selectedUser.is_pro)}>
+                                    <TextInput style={[styles.modalInput, glassStyles.container]} defaultValue={String(selectedUser.card_count)} keyboardType="numeric" onChangeText={(v) => setSelectedUser({ ...selectedUser, card_count: parseInt(v) })} />
+                                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: selectedUser.is_pro ? '#EF4444' : '#6366F1' }]} onPress={() => handleGrantPro(!selectedUser.is_pro)}>
                                         <Text style={styles.actionBtnText}>{selectedUser.is_pro ? 'Revoke PRO' : 'Grant PRO'}</Text>
                                     </TouchableOpacity>
                                     <TouchableOpacity style={styles.saveActionBtn} onPress={handleSaveUser}><Text style={styles.saveActionText}>Save Changes</Text></TouchableOpacity>
@@ -447,9 +472,9 @@ export default function AdminScreen() {
                     </View>
                 </Modal>
 
-                <Modal 
-                    visible={showCardModal} 
-                    transparent 
+                <Modal
+                    visible={showCardModal}
+                    transparent
                     animationType="slide"
                     hardwareAccelerated={true}
                     statusBarTranslucent={true}
@@ -459,9 +484,9 @@ export default function AdminScreen() {
                             <Text style={styles.modalTitle}>{selectedCard?.id ? 'Edit Card' : 'New Card'}</Text>
                             {selectedCard && (
                                 <>
-                                    <TextInput style={[styles.modalInput, glassStyles.container, {height: 80}]} multiline value={selectedCard.text} onChangeText={t => setSelectedCard({...selectedCard, text: t})} />
-                                    <TextInput style={[styles.modalInput, glassStyles.container, {marginTop: 10}]} value={selectedCard.type} onChangeText={t => setSelectedCard({...selectedCard, type: t})} placeholder="Type (fun/romantic/spicy/ldr)" />
-                                    <TextInput style={[styles.modalInput, glassStyles.container, {marginTop: 10}]} value={selectedCard.timer ? String(selectedCard.timer) : ''} keyboardType="numeric" onChangeText={t => setSelectedCard({...selectedCard, timer: parseInt(t)})} placeholder="Timer (optional)" />
+                                    <TextInput style={[styles.modalInput, glassStyles.container, { height: 80 }]} multiline value={selectedCard.text} onChangeText={t => setSelectedCard({ ...selectedCard, text: t })} />
+                                    <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.type} onChangeText={t => setSelectedCard({ ...selectedCard, type: t })} placeholder="Type (fun/romantic/spicy/ldr)" />
+                                    <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.timer ? String(selectedCard.timer) : ''} keyboardType="numeric" onChangeText={t => setSelectedCard({ ...selectedCard, timer: parseInt(t) })} placeholder="Timer (optional)" />
                                     <TouchableOpacity style={styles.saveActionBtn} onPress={handleUpsertCard}><Text style={styles.saveActionText}>Save Card</Text></TouchableOpacity>
                                     {selectedCard.id && (
                                         <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDeleteCard(selectedCard.id)}><Text style={styles.deleteText}>Delete Card</Text></TouchableOpacity>
@@ -488,20 +513,21 @@ const styles = StyleSheet.create({
     loginBtn: { width: '100%', borderRadius: 16, overflow: 'hidden', marginTop: 12 },
     loginGradient: { paddingVertical: 18, alignItems: 'center' },
     loginBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-    headerTitle: { fontSize: 22, fontWeight: '900', color: '#1E293B' },
-    headerSubtitle: { fontSize: 12, color: '#64748B', fontWeight: '700', textTransform: 'uppercase' },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 10 },
+    headerBackBtn: { padding: 6 },
+    headerTitle: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
+    headerSubtitle: { fontSize: 11, color: '#64748B', fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
     logoutBtn: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-    mainContent: { flex: 1, flexDirection: 'row' },
-    sidebar: { width: 70, borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.05)', alignItems: 'center', gap: 15, paddingVertical: 10 },
-    tabItem: { width: 50, height: 50, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+    tabBar: { maxHeight: 56, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+    tabBarContent: { paddingHorizontal: 12, gap: 6, alignItems: 'center' },
+    tabItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
     tabItemActive: { backgroundColor: 'rgba(255, 107, 53, 0.1)' },
-    tabText: { fontSize: 9, color: '#64748B', fontWeight: '700', marginTop: 4 },
+    tabText: { fontSize: 12, color: '#64748B', fontWeight: '700' },
     tabTextActive: { color: '#FF6B35' },
     contentArea: { flex: 1 },
     scrollContent: { padding: 16, paddingBottom: 40 },
     statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-    statCard: { width: (width - 100) / 2, padding: 16, borderRadius: 20 },
+    statCard: { width: '47%' as any, padding: 16, borderRadius: 20 },
     statIconWrap: { width: 32, height: 32, borderRadius: 10, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
     statValue: { fontSize: 20, fontWeight: '900', color: '#1E293B' },
     statLabel: { fontSize: 11, color: '#64748B', fontWeight: '700' },
@@ -529,7 +555,7 @@ const styles = StyleSheet.create({
     revAmount: { fontSize: 36, fontWeight: '900', color: '#1E293B' },
     revSub: { fontSize: 14, color: '#10B981', fontWeight: '700', marginTop: 4 },
     skuGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 24 },
-    skuCard: { width: (width - 106) / 2, padding: 16, borderRadius: 16 },
+    skuCard: { width: '47%' as any, padding: 16, borderRadius: 16 },
     skuName: { fontSize: 12, fontWeight: '800', color: '#475569', marginBottom: 4 },
     skuValue: { fontSize: 16, fontWeight: '900', color: '#FF6B35' },
     transCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 8 },

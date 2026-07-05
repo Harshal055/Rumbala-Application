@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, TouchableOpacity, Dimensions, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, useWindowDimensions } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import Animated, {
     useSharedValue, useAnimatedStyle, withTiming, interpolate, Extrapolation,
@@ -7,9 +7,6 @@ import Animated, {
 import { LinearGradient } from 'expo-linear-gradient';
 import { DareCard } from '../constants/cards';
 
-const { width } = Dimensions.get('window');
-const CARD_WIDTH = width * 0.82;
-const CARD_HEIGHT = CARD_WIDTH * 1.25;
 
 interface CardProps {
     card: DareCard;
@@ -32,6 +29,10 @@ const CARD_THEMES: Record<string, {
 export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
     const flipAnim = useSharedValue(isFlipped ? 1 : 0);
     const scaleAnim = useSharedValue(0.92);
+    const { width } = useWindowDimensions();
+
+    const CARD_WIDTH = Math.min(Math.max(width * 0.82, 280), 420);
+    const CARD_HEIGHT = CARD_WIDTH * 1.25;
 
     const theme = CARD_THEMES[card.type] || CARD_THEMES.fun;
 
@@ -68,7 +69,7 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
     };
 
     return (
-        <View style={styles.container}>
+        <Animated.View entering={require('react-native-reanimated').ZoomIn.springify().damping(14).stiffness(120)} style={[styles.container, { width: CARD_WIDTH, height: CARD_HEIGHT }]}>
             {/* BACK SIDE (card face-down / pre-flip) */}
             <Animated.View style={[styles.cardWrap, frontStyle]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={{ flex: 1 }}>
@@ -105,7 +106,7 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
                                 <View style={styles.typeBadge}>
                                     <Text style={styles.typeIcon}>{theme.icon}</Text>
                                     <Text style={styles.typeLabel}>
-                                        {card.type === 'ldr' && card.vibe 
+                                        {card.type === 'ldr' && card.vibe
                                             ? `LDR • ${card.vibe.toUpperCase()}`
                                             : theme.label
                                         }
@@ -124,14 +125,14 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
 
                         {/* Main dare content */}
                         <View style={styles.dareBody}>
-                            <ScrollView 
-                                contentContainerStyle={styles.scrollContent} 
+                            <ScrollView
+                                contentContainerStyle={[styles.scrollContent, { paddingHorizontal: CARD_WIDTH < 320 ? 18 : 24, paddingVertical: CARD_WIDTH < 320 ? 12 : 15 }]}
                                 showsVerticalScrollIndicator={false}
                                 centerContent={true}
                             >
                                 <Text style={styles.dareIcon}>{theme.icon}</Text>
                                 <Text style={styles.dareLabel}>Dare!</Text>
-                                <Text style={styles.dareText}>{card.text}</Text>
+                                <Text style={[styles.dareText, { fontSize: CARD_WIDTH < 320 ? 17 : 19, lineHeight: CARD_WIDTH < 320 ? 24 : 28 }]}>{card.text}</Text>
                             </ScrollView>
                         </View>
 
@@ -145,14 +146,12 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
                     </View>
                 </TouchableOpacity>
             </Animated.View>
-        </View>
+        </Animated.View>
     );
 }
 
 const styles = StyleSheet.create({
     container: {
-        width: CARD_WIDTH,
-        height: CARD_HEIGHT,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -324,8 +323,6 @@ const styles = StyleSheet.create({
         flexGrow: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        paddingHorizontal: 24,
-        paddingVertical: 15,
     },
     dareIcon: {
         fontSize: 48,
@@ -341,10 +338,8 @@ const styles = StyleSheet.create({
     },
     dareText: {
         fontFamily: 'Quicksand_700Bold',
-        fontSize: 19,
         color: '#333',
         textAlign: 'center',
-        lineHeight: 28,
     },
 
     footer: {

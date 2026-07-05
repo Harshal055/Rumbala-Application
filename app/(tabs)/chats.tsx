@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     View, Text, StyleSheet, FlatList, TextInput,
-    TouchableOpacity, Image, StatusBar, Platform, Dimensions
+    TouchableOpacity, Image, StatusBar, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,6 @@ import { glassStyles, glassTokens } from '../../src/constants/glass';
 import { useStore } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 
-const { width } = Dimensions.get('window');
 
 const BG_COLORS = ['#EEF2FF', '#E0E7FF', '#C7D2FE'];
 
@@ -35,16 +34,16 @@ export default function ChatsScreen() {
         <View style={{ marginBottom: 10 }}>
             {/* Daily Question Billboard */}
             <Animated.View entering={FadeInDown.delay(100).duration(600)}>
-                <TouchableOpacity 
-                    style={[styles.billboard, glassStyles.container]} 
+                <TouchableOpacity
+                    style={[styles.billboard, glassStyles.container]}
                     activeOpacity={0.9}
                     onPress={() => router.push('/(tabs)/daily')}
                 >
-                    <LinearGradient 
-                        colors={['#FF6B35', '#FF1493']} 
-                        style={StyleSheet.absoluteFill} 
-                        start={{ x: 0, y: 0 }} 
-                        end={{ x: 1, y: 1 }} 
+                    <LinearGradient
+                        colors={['#FF6B35', '#FF1493']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
                     />
                     <View style={styles.billboardContent}>
                         <View style={styles.billboardIcon}>
@@ -54,8 +53,8 @@ export default function ChatsScreen() {
                             <Text style={styles.billboardTitle}>DAILY QUESTION</Text>
                             <Text style={styles.billboardText} numberOfLines={1}>{dailyQuestion.text}</Text>
                             <Text style={styles.billboardStatus}>
-                                {hasAnswered 
-                                    ? (partnerAnswered ? "Both answered! 💏" : "Waiting for partner... ⏳") 
+                                {hasAnswered
+                                    ? (partnerAnswered ? "Both answered! 💏" : "Waiting for partner... ⏳")
                                     : "Tap to answer today's question 💌"}
                             </Text>
                         </View>
@@ -73,8 +72,8 @@ export default function ChatsScreen() {
         if (!roomId) return null;
         return (
             <Animated.View entering={FadeInRight.delay(200).duration(500)}>
-                <TouchableOpacity 
-                    style={[styles.chatItem, styles.partnerItem, glassStyles.container]} 
+                <TouchableOpacity
+                    style={[styles.chatItem, styles.partnerItem, glassStyles.container]}
                     activeOpacity={0.7}
                     onPress={() => router.push(`/chat/${roomId}?name=${encodeURIComponent(partnerName)}`)}
                 >
@@ -118,12 +117,12 @@ export default function ChatsScreen() {
     }
 
     const renderItem = ({ item, index }: { item: ChatItemData, index: number }) => (
-        <Animated.View 
+        <Animated.View
             entering={FadeInRight.delay(300 + index * 100).duration(500)}
             renderToHardwareTextureAndroid={true}
         >
-            <TouchableOpacity 
-                style={[styles.chatItem, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)', borderColor: 'rgba(255,255,255,0.3)' }]} 
+            <TouchableOpacity
+                style={[styles.chatItem, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)', borderColor: 'rgba(255,255,255,0.3)' }]}
                 activeOpacity={0.7}
                 onPress={() => router.push(`/chat/${item.id}?name=${encodeURIComponent(item.name)}`)}
             >
@@ -148,7 +147,7 @@ export default function ChatsScreen() {
         <AnimatedBackground colors={BG_COLORS}>
             <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
                 <StatusBar barStyle="dark-content" />
-                
+
                 {/* Header */}
                 <Animated.View entering={FadeInDown.duration(500)} style={[styles.header, glassStyles.header]}>
                     <TouchableOpacity style={[styles.menuBtn, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
@@ -161,7 +160,7 @@ export default function ChatsScreen() {
                         </TouchableOpacity>
                         <TouchableOpacity style={styles.headerIconBtn}>
                             <View style={styles.avatarMini}>
-                               <Image source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100' }} style={styles.avatarMiniImg} />
+                                <Image source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100' }} style={styles.avatarMiniImg} />
                             </View>
                         </TouchableOpacity>
                     </View>
@@ -187,8 +186,8 @@ export default function ChatsScreen() {
                 />
 
                 {/* FAB */}
-                <TouchableOpacity 
-                    style={styles.fab} 
+                <TouchableOpacity
+                    style={styles.fab}
                     activeOpacity={0.9}
                     onPress={() => router.push('/chat/new?name=New%20Conversation')}
                 >
@@ -215,7 +214,7 @@ const styles = StyleSheet.create({
     avatarMiniImg: { width: '100%', height: '100%' },
 
     listContent: { paddingBottom: 120, paddingHorizontal: 16, paddingTop: 10 },
-    
+
     // Billboard
     billboard: {
         borderRadius: 24, padding: 20, marginBottom: 20, overflow: 'hidden',
@@ -226,7 +225,7 @@ const styles = StyleSheet.create({
     billboardTitle: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.8)', letterSpacing: 1.5, marginBottom: 4 },
     billboardText: { fontSize: 18, fontWeight: '800', color: '#fff', marginBottom: 4 },
     billboardStatus: { fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.9)' },
-    
+
     sectionLabel: { fontSize: 14, fontWeight: '800', color: '#1a1a1a', opacity: 0.4, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 4 },
 
     chatItem: {
@@ -240,10 +239,10 @@ const styles = StyleSheet.create({
     avatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.05)' },
     avatarGradient: { width: 56, height: 56, borderRadius: 28, alignItems: 'center', justifyContent: 'center' },
     avatarInitial: { color: '#fff', fontSize: 22, fontWeight: '900' },
-    onlineDot: { 
-        position: 'absolute', bottom: 2, right: 2, 
-        width: 14, height: 14, borderRadius: 7, 
-        backgroundColor: '#22C55E', borderWidth: 2, borderColor: '#fff' 
+    onlineDot: {
+        position: 'absolute', bottom: 2, right: 2,
+        width: 14, height: 14, borderRadius: 7,
+        backgroundColor: '#22C55E', borderWidth: 2, borderColor: '#fff'
     },
     chatInfo: { flex: 1, marginLeft: 15 },
     chatHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
@@ -251,19 +250,19 @@ const styles = StyleSheet.create({
     chatTime: { fontSize: 12, color: '#888', fontWeight: '600' },
     chatFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     chatMessage: { fontSize: 14, color: '#666', flex: 1, marginRight: 10, fontWeight: '500' },
-    unreadBadge: { 
-        backgroundColor: '#FF6B35', minWidth: 20, height: 20, 
+    unreadBadge: {
+        backgroundColor: '#FF6B35', minWidth: 20, height: 20,
         borderRadius: 10, alignItems: 'center', justifyContent: 'center',
         paddingHorizontal: 6
     },
     unreadText: { color: '#fff', fontSize: 11, fontWeight: '900' },
 
-    fab: { 
+    fab: {
         position: 'absolute', bottom: 30, right: 30,
         elevation: 0, shadowColor: 'rgba(255, 107, 53, 0.4)', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 }, shadowRadius: 10
     },
-    fabGradient: { 
-        width: 60, height: 60, borderRadius: 30, 
+    fabGradient: {
+        width: 60, height: 60, borderRadius: 30,
         alignItems: 'center', justifyContent: 'center',
     },
 });

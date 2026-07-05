@@ -1,11 +1,11 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DareCard, CARDS } from '../constants/cards';
-import { 
-    getUserCards, addUserCards, getProfile, updateProfile, 
-    addPoints as apiAddPoints, getScores as apiGetScores, 
-    claimWeeklyFreeCards, getHistory as apiGetHistory, 
-    addHistoryEntry as apiAddHistoryEntry, syncCardCount, ensureProfileExists 
+import {
+    getUserCards, addUserCards, getProfile, updateProfile,
+    addPoints as apiAddPoints, getScores as apiGetScores,
+    claimWeeklyFreeCards, getHistory as apiGetHistory,
+    addHistoryEntry as apiAddHistoryEntry, syncCardCount, ensureProfileExists
 } from '../services/api';
 
 export interface HistoryEntry {
@@ -299,7 +299,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
         if (!dailyQuestion) return;
         set({ dailyQuestion: { ...dailyQuestion, myResponse: response } });
         get().updateStreak();
-        
+
         // Sync to cloud
         if (userId) {
             import('../services/api').then(api => {
@@ -314,10 +314,10 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
         try {
             const api = await import('../services/api');
-            
+
             // In LDR mode, we should fetch both responses.
             const responses = await api.getDailyResponses(dailyQuestion.id, [userId]);
-            
+
             if (responses && responses.length > 0) {
                 const myResp = responses.find((r: any) => r.user_id === userId);
                 if (myResp) {
@@ -326,7 +326,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
                     }));
                 }
             }
-            
+
             const { roomId } = get();
             if (roomId) {
                 const roomData = await import('../services/roomApi').then(rapi => rapi.getRoomDataV2(roomId));
@@ -352,7 +352,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
     checkMilestones: () => {
         const { streak, history, milestones } = get();
         const newMilestones = [...milestones];
-        
+
         if (streak >= 7 && !milestones.includes('7_day_streak')) {
             newMilestones.push('7_day_streak');
             get().showAlert('🔥 7 Day Streak!', 'You two are on fire! 7 days of love and laughter.');
@@ -369,7 +369,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
     },
 
     // ─── Count-based card system ───
-    cardCount: 2, 
+    cardCount: 2,
     setCardCount: (count) => {
         set({ cardCount: count });
         AsyncStorage.setItem('@Rumbala_card_count', String(count));
@@ -388,8 +388,8 @@ export const useStore = create<ApplicationState>((set, get) => ({
         const { cardCount, isPro, cards, mode } = get();
         if (!isPro && cardCount <= 0) return null;
 
-        let pool = (cards && cards.length > 0) ? cards : CARDS; 
-        
+        let pool = (cards && cards.length > 0) ? cards : CARDS;
+
         // 🔒 Mode & Vibe Enforcement
         if (vibeFilter === 'ldr') {
             // Specifically requested LDR cards
@@ -508,7 +508,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
                     card: bh.card,
                     winner: bh.winner,
                     proofUri: bh.proof_uri
-                }));
+                })).slice(0, 50);
                 set({ history: mappedHistory });
                 await AsyncStorage.setItem('@Rumbala_history', JSON.stringify(mappedHistory));
             }
@@ -569,9 +569,9 @@ export const useStore = create<ApplicationState>((set, get) => ({
     },
 
     addHistoryEntry: (entry) => {
-        const updatedHistory = [entry, ...get().history];
+        const updatedHistory = [entry, ...get().history].slice(0, 50);
         set({ history: updatedHistory });
-        AsyncStorage.setItem('@Rumbala_history', JSON.stringify(updatedHistory));
+        AsyncStorage.setItem('@Rumbala_history', JSON.stringify(updatedHistory)).catch(console.warn);
         const userId = get().userId;
         if (userId) {
             apiAddHistoryEntry(userId, entry.card, entry.winner).catch(console.warn);
@@ -657,7 +657,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
                         winner: payload.new.winner,
                         proofUri: payload.new.proof_uri
                     };
-                    set(state => ({ history: [entry, ...state.history].slice(0, 100) }));
+                    set(state => ({ history: [entry, ...state.history].slice(0, 50) }));
                 })
                 .subscribe();
 
@@ -668,7 +668,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_responses', filter: `question_id=eq.${questionId}` }, async (payload) => {
                     const data = payload.new as any;
                     if (!data) return;
-                    
+
                     if (data.user_id === userId) {
                         set(state => ({ dailyQuestion: { ...state.dailyQuestion, myResponse: data.response } }));
                     } else {
@@ -687,7 +687,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
             if (scoreChannel) supabase.removeChannel(scoreChannel);
             if (historyChannel) supabase.removeChannel(historyChannel);
             if (dailyChannel) supabase.removeChannel(dailyChannel);
-            
+
             profileChannel = null;
             scoreChannel = null;
             historyChannel = null;
@@ -704,7 +704,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
             roomChannel = supabase
                 .channel(`room-${roomCode}`)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'rooms', filter: `code=eq.${roomCode}` }, (payload) => {
-                    console.log('🔄 Room Realtime Update:', payload.new);
+                    if (__DEV__) console.log('🔄 Room Realtime Update:', payload.new);
                     // This updates the local view of the room (used in LDR screen)
                     // We don't store the full Room object in useStore yet, 
                     // but we can trigger a re-fetch or update specific fields if needed.
@@ -715,7 +715,7 @@ export const useStore = create<ApplicationState>((set, get) => ({
             chatChannel = supabase
                 .channel(`chat-${roomCode}`)
                 .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'room_messages', filter: `room_code=eq.${roomCode}` }, (payload) => {
-                    console.log('💬 New Chat Message:', payload.new);
+                    if (__DEV__) console.log('💬 New Chat Message:', payload.new);
                     // Could maintain a local chat buffer here if needed
                 })
                 .subscribe();
@@ -733,33 +733,39 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
     hydrate: async () => {
         try {
-            const namesJson = await AsyncStorage.getItem('@Rumbala_names');
-            const modeStr = await AsyncStorage.getItem('@Rumbala_mode') as 'local' | 'ldr' | null;
-            const vibeStr = await AsyncStorage.getItem('@Rumbala_vibe');
-            const cardCountStr = await AsyncStorage.getItem('@Rumbala_card_count');
-            const lastClaim = await AsyncStorage.getItem('@Rumbala_last_claim');
-            const scoresJson = await AsyncStorage.getItem('@Rumbala_scores');
-            const historyJson = await AsyncStorage.getItem('@Rumbala_history');
-            const lastPaywallShownStr = await AsyncStorage.getItem('@Rumbala_last_paywall_shown');
-            const roomIdStr = await AsyncStorage.getItem('@Rumbala_room_id');
+            // Batch read all keys at once for faster hydration
+            const keys = [
+                '@Rumbala_names', '@Rumbala_mode', '@Rumbala_vibe',
+                '@Rumbala_card_count', '@Rumbala_last_claim', '@Rumbala_scores',
+                '@Rumbala_history', '@Rumbala_last_paywall_shown', '@Rumbala_room_id',
+                '@Rumbala_is_pro', '@Rumbala_streak_count', '@Rumbala_last_active',
+                '@Rumbala_milestones', '@Rumbala_daily_answer', '@Rumbala_onboarding_seen',
+                '@Rumbala_subscription_seen', '@Rumbala_notifications_enabled',
+            ];
+            const results = await AsyncStorage.multiGet(keys);
+            const cache: Record<string, string | null> = {};
+            for (const [key, value] of results) {
+                cache[key] = value;
+            }
 
             const { supabase } = await import('../services/supabase');
             const { data: { session } } = await supabase.auth.getSession();
-            
+
             if (session?.user) {
                 const uid = session.user.id;
                 const email = session.user.email || null;
                 set({ userId: uid, userEmail: email, isAuthenticated: true, isAuthChecked: true });
-                AsyncStorage.setItem('@Rumbala_userId', uid);
-                if (email) AsyncStorage.setItem('@Rumbala_userEmail', email);
-                AsyncStorage.setItem('@Rumbala_auth', 'true');
+                AsyncStorage.setItem('@Rumbala_userId', uid).catch(console.warn);
+                if (email) AsyncStorage.setItem('@Rumbala_userEmail', email).catch(console.warn);
+                AsyncStorage.setItem('@Rumbala_auth', 'true').catch(console.warn);
                 await get().syncWithSupabase();
                 get().setupRealtimeListeners();
             } else {
                 set({ isAuthChecked: true, isAuthenticated: false, userId: null, userEmail: null });
-                AsyncStorage.setItem('@Rumbala_auth', 'false');
+                AsyncStorage.setItem('@Rumbala_auth', 'false').catch(console.warn);
             }
 
+            const namesJson = cache['@Rumbala_names'];
             if (namesJson) {
                 try {
                     const { partner1, partner2 } = JSON.parse(namesJson);
@@ -769,40 +775,37 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 }
             }
 
-            const isProStr = await AsyncStorage.getItem('@Rumbala_is_pro');
-            if (isProStr === 'true') set({ isPro: true });
-            if (modeStr) set({ mode: modeStr });
-            if (vibeStr) set({ selectedVibe: vibeStr });
-            if (cardCountStr) set({ cardCount: parseInt(cardCountStr, 10) || 0 });
-            if (lastClaim) set({ lastFreeClaimDate: lastClaim });
-            if (scoresJson) set({ scores: JSON.parse(scoresJson) });
-            if (historyJson) set({ history: JSON.parse(historyJson) });
-            if (lastPaywallShownStr) set({ lastPaywallShown: lastPaywallShownStr });
-            if (roomIdStr) set({ roomId: roomIdStr });
-
-            const streakStr = await AsyncStorage.getItem('@Rumbala_streak_count');
-            const lastActiveStr = await AsyncStorage.getItem('@Rumbala_last_active');
-            const milestonesJson = await AsyncStorage.getItem('@Rumbala_milestones');
-            const dailyAnswer = await AsyncStorage.getItem('@Rumbala_daily_answer');
-
-            if (streakStr) set({ streak: parseInt(streakStr, 10) });
-            if (lastActiveStr) set({ lastActiveDate: lastActiveStr });
-            if (milestonesJson) set({ milestones: JSON.parse(milestonesJson) });
-            if (dailyAnswer) {
-                const { date, response } = JSON.parse(dailyAnswer);
-                if (date === new Date().toISOString().split('T')[0]) {
-                    set(state => ({ dailyQuestion: { ...state.dailyQuestion, myResponse: response } }));
-                }
+            if (cache['@Rumbala_is_pro'] === 'true') set({ isPro: true });
+            if (cache['@Rumbala_mode']) set({ mode: cache['@Rumbala_mode'] as 'local' | 'ldr' });
+            if (cache['@Rumbala_vibe']) set({ selectedVibe: cache['@Rumbala_vibe'] });
+            if (cache['@Rumbala_card_count']) set({ cardCount: parseInt(cache['@Rumbala_card_count']!, 10) || 0 });
+            if (cache['@Rumbala_last_claim']) set({ lastFreeClaimDate: cache['@Rumbala_last_claim'] });
+            if (cache['@Rumbala_scores']) {
+                try { set({ scores: JSON.parse(cache['@Rumbala_scores']!) }); } catch {}
+            }
+            if (cache['@Rumbala_history']) {
+                try { set({ history: JSON.parse(cache['@Rumbala_history']!).slice(0, 50) }); } catch {}
+            }
+            if (cache['@Rumbala_last_paywall_shown']) set({ lastPaywallShown: cache['@Rumbala_last_paywall_shown'] });
+            if (cache['@Rumbala_room_id']) set({ roomId: cache['@Rumbala_room_id'] });
+            
+            if (cache['@Rumbala_streak_count']) set({ streak: parseInt(cache['@Rumbala_streak_count']!, 10) || 0 });
+            if (cache['@Rumbala_last_active']) set({ lastActiveDate: cache['@Rumbala_last_active'] });
+            if (cache['@Rumbala_milestones']) {
+                try { set({ milestones: JSON.parse(cache['@Rumbala_milestones']!) }); } catch {}
+            }
+            if (cache['@Rumbala_daily_answer']) {
+                try {
+                    const { date, response } = JSON.parse(cache['@Rumbala_daily_answer']!);
+                    if (date === new Date().toISOString().split('T')[0]) {
+                        set(state => ({ dailyQuestion: { ...state.dailyQuestion, myResponse: response } }));
+                    }
+                } catch {}
             }
 
-            const onboardingSeen = await AsyncStorage.getItem('@Rumbala_onboarding_seen');
-            if (onboardingSeen === 'true') set({ hasSeenOnboarding: true });
-
-            const subscriptionSeen = await AsyncStorage.getItem('@Rumbala_subscription_seen');
-            if (subscriptionSeen === 'true') set({ hasSeenSubscription: true });
-
-            const notificationsEnabled = await AsyncStorage.getItem('@Rumbala_notifications_enabled');
-            if (notificationsEnabled === 'true') set({ notificationsEnabled: true });
+            if (cache['@Rumbala_onboarding_seen'] === 'true') set({ hasSeenOnboarding: true });
+            if (cache['@Rumbala_subscription_seen'] === 'true') set({ hasSeenSubscription: true });
+            if (cache['@Rumbala_notifications_enabled'] === 'true') set({ notificationsEnabled: true });
 
         } catch (e) {
             console.error('Failed to hydrate state', e);
