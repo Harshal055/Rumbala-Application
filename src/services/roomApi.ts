@@ -31,9 +31,9 @@ export interface RoomData {
     updated_at: string;
 }
 
-// In-memory handles for real-time subscriptions
-let roomSubscriber: ReturnType<typeof setInterval> | null = null;
-let chatSubscriber: ReturnType<typeof setInterval> | null = null;
+// Per-room interval handles — keyed by room code to prevent ghost polling
+const roomSubscribers = new Map<string, ReturnType<typeof setInterval>>();
+const chatSubscribers = new Map<string, ReturnType<typeof setInterval>>();
 
 // ===== ROOM MANAGEMENT =====
 
@@ -109,14 +109,16 @@ export const deleteRoomV2 = async (roomCode: string) => {
         console.warn('Failed to delete room:', error?.message);
     }
 
-    // Clean up subscriptions
-    if (roomSubscriber) {
-        clearInterval(roomSubscriber);
-        roomSubscriber = null;
+    // Bug Fix: Clean up per-room subscriptions using Maps
+    const roomSub = roomSubscribers.get(roomCode);
+    if (roomSub) {
+        clearInterval(roomSub);
+        roomSubscribers.delete(roomCode);
     }
-    if (chatSubscriber) {
-        clearInterval(chatSubscriber);
-        chatSubscriber = null;
+    const chatSub = chatSubscribers.get(roomCode);
+    if (chatSub) {
+        clearInterval(chatSub);
+        chatSubscribers.delete(roomCode);
     }
 };
 
@@ -169,10 +171,11 @@ export const subscribeToRoomV2 = (
     roomCode: string,
     callback: (data: RoomData) => void
 ): (() => void) => {
-    // Clear existing subscriber
-    if (roomSubscriber) {
-        clearInterval(roomSubscriber);
-        roomSubscriber = null;
+    // Bug Fix: Clear any existing subscriber for THIS room only (not all rooms)
+    const existing = roomSubscribers.get(roomCode);
+    if (existing) {
+        clearInterval(existing);
+        roomSubscribers.delete(roomCode);
     }
 
     // Initial fetch
@@ -182,7 +185,7 @@ export const subscribeToRoomV2 = (
 
     // Poll periodically — each tick is wrapped in try/catch so transient
     // network errors don't kill the subscription
-    roomSubscriber = setInterval(async () => {
+    const intervalId = setInterval(async () => {
         try {
             const data = await getRoomDataV2(roomCode);
             if (data) callback(data);
@@ -191,11 +194,14 @@ export const subscribeToRoomV2 = (
         }
     }, POLL_INTERVAL_MS);
 
-    // Return unsubscribe function
+    roomSubscribers.set(roomCode, intervalId);
+
+    // Return unsubscribe function that cleans up ONLY this room's interval
     return () => {
-        if (roomSubscriber) {
-            clearInterval(roomSubscriber);
-            roomSubscriber = null;
+        const id = roomSubscribers.get(roomCode);
+        if (id) {
+            clearInterval(id);
+            roomSubscribers.delete(roomCode);
         }
     };
 };
@@ -208,10 +214,11 @@ export const subscribeToChatV2 = (
     roomCode: string,
     callback: (messages: ChatMessage[]) => void
 ): (() => void) => {
-    // Clear existing subscriber
-    if (chatSubscriber) {
-        clearInterval(chatSubscriber);
-        chatSubscriber = null;
+    // Bug Fix: Clear any existing subscriber for THIS room only
+    const existing = chatSubscribers.get(roomCode);
+    if (existing) {
+        clearInterval(existing);
+        chatSubscribers.delete(roomCode);
     }
 
     // Initial fetch
@@ -220,7 +227,7 @@ export const subscribeToChatV2 = (
     }).catch(() => { /* initial fetch failed, polling will retry */ });
 
     // Poll periodically
-    chatSubscriber = setInterval(async () => {
+    const intervalId = setInterval(async () => {
         try {
             const messages = await getChatMessagesV2(roomCode);
             callback(messages);
@@ -229,11 +236,14 @@ export const subscribeToChatV2 = (
         }
     }, POLL_INTERVAL_MS);
 
-    // Return unsubscribe function
+    chatSubscribers.set(roomCode, intervalId);
+
+    // Return unsubscribe function that cleans up ONLY this room's interval
     return () => {
-        if (chatSubscriber) {
-            clearInterval(chatSubscriber);
-            chatSubscriber = null;
+        const id = chatSubscribers.get(roomCode);
+        if (id) {
+            clearInterval(id);
+            chatSubscribers.delete(roomCode);
         }
     };
 };

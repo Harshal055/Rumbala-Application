@@ -37,12 +37,8 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
     const theme = CARD_THEMES[card.type] || CARD_THEMES.fun;
 
     useEffect(() => {
-        flipAnim.value = withTiming(isFlipped ? 1 : 0, { duration: 500 });
-        if (isFlipped) {
-            scaleAnim.value = withTiming(1, { duration: 400 });
-        } else {
-            scaleAnim.value = withTiming(0.92, { duration: 300 });
-        }
+        flipAnim.value = withTiming(isFlipped ? 1 : 0, { duration: 480 });
+        scaleAnim.value = withTiming(isFlipped ? 1 : 0.93, { duration: 380 });
     }, [isFlipped]);
 
     const frontStyle = useAnimatedStyle(() => {
@@ -50,7 +46,6 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
         return {
             transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }, { scale: scaleAnim.value }],
             backfaceVisibility: 'hidden' as const,
-            opacity: flipAnim.value < 0.5 ? 1 : 0,
         };
     });
 
@@ -59,7 +54,6 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
         return {
             transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }, { scale: scaleAnim.value }],
             backfaceVisibility: 'hidden' as const,
-            opacity: flipAnim.value >= 0.5 ? 1 : 0,
         };
     });
 

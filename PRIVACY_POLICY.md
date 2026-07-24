@@ -1,6 +1,6 @@
 # Privacy Policy for Rumbala
 
-**Last Updated: March 15, 2026**
+**Last Updated: July 22, 2026**
 
 This Privacy Policy describes how Rumbala ("we", "us", or "our") collects, uses, and discloses your information when you use our mobile application.
 
@@ -25,4 +25,4 @@ We do not sell your personal information. We share your information only as desc
 You can update your account information at any time through the app.
 
 ## 5. Contact Us
-If you have any questions about this Privacy Policy, please contact us at [YOUR_EMAIL_HERE].
+If you have any questions about this Privacy Policy, please contact us at sanjognetwork@gmail.com.

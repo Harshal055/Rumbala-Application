@@ -19,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { useStore } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
-import { glassStyles, glassTokens } from '../../src/constants/glass';
+import { glassStyles, glassTokens, brandGradient } from '../../src/constants/glass';
 
 
 
@@ -150,14 +150,6 @@ export default function CoupleProfileScreen() {
         { id: 'tier', icon: 'diamond-outline' as const, label: 'Plan', value: isPro ? 'Pro Couple' : 'Free Couple' },
     ];
 
-    const handleBack = () => {
-        if (router.canGoBack()) {
-            router.back();
-        } else {
-            router.replace('/(tabs)');
-        }
-    };
-
     const getCardIcon = (type: string) => {
         switch (type) {
             case 'fun': return '🎈';
@@ -181,9 +173,7 @@ export default function CoupleProfileScreen() {
                 
                 {/* Header */}
                 <View style={[styles.header, glassStyles.header]}>
-                    <TouchableOpacity onPress={handleBack} style={styles.headerBtn}>
-                        <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-                    </TouchableOpacity>
+                    <View style={styles.headerBtn} />
                     <Text style={styles.headerTitle}>Couple Profile</Text>
                     <TouchableOpacity onPress={() => router.push('/settings')} style={styles.headerBtn}>
                         <Ionicons name="settings-sharp" size={24} color="#1a1a1a" />
@@ -205,7 +195,7 @@ export default function CoupleProfileScreen() {
 
                             {/* Heart badge */}
                             <Animated.View style={[styles.heartBadge, badgeAnimStyle]}>
-                                <LinearGradient colors={['#FF6B35', '#FF1493']} style={styles.heartBadgeGrad}>
+                                <LinearGradient colors={brandGradient} style={styles.heartBadgeGrad}>
                                     <Ionicons name="heart" size={18} color="#fff" />
                                 </LinearGradient>
                             </Animated.View>
@@ -333,7 +323,9 @@ export default function CoupleProfileScreen() {
                                             <Image source={{ uri: entry.proofUri }} style={StyleSheet.absoluteFill} />
                                         ) : (
                                             <View style={styles.placeholderPlant}>
-                                                <Text style={{ fontSize: 40 }}>{getCardIcon(entry.card.type)}</Text>
+                                                <Text style={{ fontSize: 32 }}>{getCardIcon(entry.card.type)}</Text>
+                                                <Ionicons name="camera-outline" size={16} color="rgba(0,0,0,0.35)" />
+                                                <Text style={styles.placeholderHint}>No photo yet</Text>
                                             </View>
                                         )}
                                         <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.6)']} style={styles.memoryOverlay} />
@@ -518,7 +510,8 @@ const styles = StyleSheet.create({
     memoryTitle: { color: '#fff', fontSize: 14, fontWeight: '800', marginBottom: 2 },
     memoryDate: { color: 'rgba(255,255,255,0.8)', fontSize: 11, fontWeight: '700' },
 
-    placeholderPlant: { flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.5 },
+    placeholderPlant: { flex: 1, justifyContent: 'center', alignItems: 'center', opacity: 0.5, gap: 4 },
+    placeholderHint: { fontSize: 11, fontWeight: '700', color: 'rgba(0,0,0,0.35)' },
     emptyMemories: { width: '100%', paddingVertical: 40, alignItems: 'center', gap: 12 },
     emptyText: { fontSize: 13, color: '#999', textAlign: 'center', lineHeight: 20, paddingHorizontal: 40 },
 });

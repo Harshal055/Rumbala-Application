@@ -1,5 +1,7 @@
 import { StyleSheet } from 'react-native';
 
+export const brandGradient = ['#FF6B35', '#FF1493'] as const;
+
 export const glassTokens = {
     background: 'rgba(255, 255, 255, 0.45)',
     border: 'rgba(255, 255, 255, 0.6)',

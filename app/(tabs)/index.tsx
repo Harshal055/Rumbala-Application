@@ -23,7 +23,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import PaywallModal from '../../src/components/PaywallModal';
 import { getOfferings, purchasePackage } from '../../src/services/revenueCatService';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
-import { glassStyles, glassTokens } from '../../src/constants/glass';
+import { glassStyles, glassTokens, brandGradient } from '../../src/constants/glass';
 
 
 const BG_COLORS = ['#FFFAF0', '#FFE4E1', '#E6E6FA']; // Soft, elegant base for glass
@@ -36,6 +36,26 @@ const VIBES = [
     { key: 'ldr', label: 'LDR', color: '#8B5CF6', premium: true },
 ] as const;
 
+// One-line description shown under the filters so users know what they're picking
+const VIBE_INFO: Record<string, string> = {
+    all: 'A mix of everything — fun, romantic and spicy.',
+    fun: 'Silly, playful challenges to make you both laugh.',
+    romantic: 'Sweet, heartfelt moments to feel closer.',
+    spicy: 'Flirty dares that heat up: Seductive → Steamy → Extreme.',
+    ldr: 'Long-distance dares by text, voice, photo and video call.',
+};
+
+const INTENSITY_LABEL: Record<number, string> = { 1: 'Seductive', 2: 'Steamy', 3: 'Extreme' };
+
+// Steps shown in the "How to Play" help modal
+const HOW_TO_PLAY = [
+    { icon: 'heart', text: 'Tap the heart to draw a dare card.' },
+    { icon: 'color-filter', text: 'Pick a vibe — Fun, Romantic, Spicy or LDR — to set the mood.' },
+    { icon: 'flame', text: 'In Spicy, choose your heat: Seductive, Steamy or Extreme. It builds up slowly.' },
+    { icon: 'checkmark-circle', text: 'Do the dare, then tap Done to earn points — or Skip if you\'d rather pass.' },
+    { icon: 'happy', text: 'Golden rule: either partner can pass anytime. Consent keeps it fun.' },
+];
+
 export default function TabHomeScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
@@ -43,9 +63,10 @@ export default function TabHomeScreen() {
     const {
         partner1, partner2, cardCount,
         lastFreeClaimDate, claimWeeklyFree, hydrate,
-        selectedVibe, setSelectedVibe, scores, addPoint, addHistoryEntry,
+        selectedVibe, setSelectedVibe, selectedIntensity, setSelectedIntensity,
+        scores, addPoint, addHistoryEntry,
         isPro, lastPaywallShown, setLastPaywallShown, showAlert,
-        drawCard, updateStreak, syncWithSupabase,
+        drawCard, streak, updateStreak, syncWithSupabase,
         hasHydrated
     } = useStore(useShallow((state: any) => ({
         partner1: state.partner1,
@@ -56,6 +77,8 @@ export default function TabHomeScreen() {
         hydrate: state.hydrate,
         selectedVibe: state.selectedVibe,
         setSelectedVibe: state.setSelectedVibe,
+        selectedIntensity: state.selectedIntensity,
+        setSelectedIntensity: state.setSelectedIntensity,
         scores: state.scores,
         addPoint: state.addPoint,
         addHistoryEntry: state.addHistoryEntry,
@@ -64,6 +87,7 @@ export default function TabHomeScreen() {
         setLastPaywallShown: state.setLastPaywallShown,
         showAlert: state.showAlert,
         drawCard: state.drawCard,
+        streak: state.streak,
         updateStreak: state.updateStreak,
         syncWithSupabase: state.syncWithSupabase,
         hasHydrated: state.hasHydrated,
@@ -75,6 +99,7 @@ export default function TabHomeScreen() {
     const [cardsPlayed, setCardsPlayed] = useState(0);
     const [showCamera, setShowCamera] = useState(false);
     const [showPaywall, setShowPaywall] = useState(false);
+    const [showHelp, setShowHelp] = useState(false);
     const [hintRevealed, setHintRevealed] = useState(false);
     const confettiRef = useRef<LottieView>(null);
 
@@ -251,7 +276,17 @@ export default function TabHomeScreen() {
                             {(partner1 && partner2) ? `${partner1} & ${partner2}` : (partner1 || partner2 || 'Couple')}
                         </Text>
                     </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TouchableOpacity
+                            style={[styles.helpBtn, glassStyles.container]}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                setShowHelp(true);
+                            }}
+                        >
+                            <Ionicons name="help-circle-outline" size={20} color="#1a1a1a" />
+                        </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]}
                             activeOpacity={0.8}
@@ -259,11 +294,25 @@ export default function TabHomeScreen() {
                         >
                             <Ionicons name={isPro ? "diamond" : "albums-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
                             <Text style={[styles.cardPillText, isPro && styles.proCardPillText]}>
-                                {isPro ? 'Pro Active' : cardCount}
+                                {isPro ? 'Pro Active' : `${cardCount} cards`}
                             </Text>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
+
+                {/* ── Streak Teaser ── */}
+                {!currentCard && streak > 0 && (
+                    <Animated.View entering={FadeInDown.delay(200).duration(500)} style={styles.streakTeaserWrap}>
+                        <TouchableOpacity
+                            style={[styles.streakTeaser, glassStyles.container]}
+                            activeOpacity={0.8}
+                            onPress={() => router.push('/(tabs)/daily')}
+                        >
+                            <Text style={styles.streakTeaserText}>🔥 {streak}-day love streak — answer today's question</Text>
+                            <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
+                        </TouchableOpacity>
+                    </Animated.View>
+                )}
 
                 {/* ── Play Area ── */}
                 <View style={styles.playArea}>
@@ -297,11 +346,12 @@ export default function TabHomeScreen() {
                             <TouchableOpacity onPress={handleDrawCard} activeOpacity={0.85}>
                                 {/* Glow ring */}
                                 <Animated.View style={[styles.glowRing, glowStyle]} />
-                                <View style={[styles.drawCircle, glassStyles.container, { borderRadius: 140 }]}>
+                                <View style={[styles.drawCircle, glassStyles.container, { borderRadius: 140, overflow: 'hidden' }]}>
+                                    <LinearGradient colors={brandGradient} style={StyleSheet.absoluteFill} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} />
                                     <View style={styles.drawInner}>
-                                        <Ionicons name="heart" size={48} color="#FF6B35" />
-                                        <Text style={styles.drawLabel}>Draw Card</Text>
-                                        <Text style={styles.drawSub}>Tap to play</Text>
+                                        <Ionicons name="heart" size={48} color="#fff" />
+                                        <Text style={[styles.drawLabel, { color: '#fff' }]}>Draw Card</Text>
+                                        <Text style={[styles.drawSub, { color: 'rgba(255,255,255,0.85)' }]}>Tap to play</Text>
                                     </View>
                                 </View>
                             </TouchableOpacity>
@@ -364,8 +414,69 @@ export default function TabHomeScreen() {
                                 );
                             })}
                         </ScrollView>
+
+                        {/* Vibe description — helps users understand each mode */}
+                        <Text style={styles.vibeInfo}>{VIBE_INFO[activeVibeKey]}</Text>
+
+                        {/* Intensity Selector — Only visible in Spicy mode */}
+                        {activeVibeKey === 'spicy' && (
+                        <View style={styles.intensityContainer}>
+                            <Text style={styles.intensityLabel}>
+                                Spicy Intensity — Level {selectedIntensity} of 3: {INTENSITY_LABEL[selectedIntensity]}
+                            </Text>
+                            <View style={styles.intensityRow}>
+                                {[
+                                    { level: 1, label: 'Seductive 😏', color: '#FF9800' },
+                                    { level: 2, label: 'Steamy 🔥', color: '#F44336' },
+                                    { level: 3, label: 'Extreme 🥵', color: '#9C27B0' }
+                                ].map((item) => (
+                                    <TouchableOpacity 
+                                        key={item.level} 
+                                        style={[
+                                            styles.intensityBtn, 
+                                            selectedIntensity === item.level && { backgroundColor: item.color, borderColor: item.color }
+                                        ]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            setSelectedIntensity(item.level);
+                                        }}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[
+                                            styles.intensityBtnText,
+                                            selectedIntensity === item.level && { color: '#fff' }
+                                        ]}>{item.label}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </View>
+                        )}
                     </Animated.View>
                 )}
+
+                {/* ── How to Play Modal ── */}
+                <Modal visible={showHelp} transparent animationType="fade" onRequestClose={() => setShowHelp(false)}>
+                    <View style={styles.overlay}>
+                        <View style={[styles.modalCard, glassStyles.container]}>
+                            <View style={styles.modalIconWrap}>
+                                <Ionicons name="sparkles" size={26} color="#FF6B35" />
+                            </View>
+                            <Text style={styles.modalTitle}>How to Play</Text>
+                            <Text style={styles.modalSub}>Draw, dare, connect. Here's the quick version:</Text>
+                            {HOW_TO_PLAY.map((step, i) => (
+                                <View key={i} style={styles.helpRow}>
+                                    <Ionicons name={step.icon as any} size={18} color="#FF6B35" style={{ marginTop: 1 }} />
+                                    <Text style={styles.helpText}>{step.text}</Text>
+                                </View>
+                            ))}
+                            <TouchableOpacity style={styles.helpCloseBtn} onPress={() => setShowHelp(false)} activeOpacity={0.85}>
+                                <LinearGradient colors={brandGradient} style={styles.helpCloseGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
+                                    <Text style={styles.actionTextLight}>Got it 💕</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
 
                 {/* ── Camera Modal ── */}
                 <CameraModal visible={showCamera} onClose={() => setShowCamera(false)} onPhotoTaken={handlePhotoTaken} />
@@ -391,7 +502,7 @@ const styles = StyleSheet.create({
     headerLeft: { flex: 1, marginRight: 15 },
     greeting: {
         fontSize: 13, color: '#888', fontWeight: '700', marginBottom: 2,
-        letterSpacing: 0.5, textTransform: 'uppercase',
+        letterSpacing: 0.5,
     },
     headerName: {
         fontFamily: 'Pacifico_400Regular', fontSize: 22, color: '#1a1a1a',
@@ -406,6 +517,10 @@ const styles = StyleSheet.create({
     },
     cardPillText: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
     proCardPillText: { color: '#FF66B2' },
+    helpBtn: {
+        width: 38, height: 38, borderRadius: 19,
+        justifyContent: 'center', alignItems: 'center',
+    },
 
     // ── Play Area ──
     playArea: {
@@ -429,6 +544,14 @@ const styles = StyleSheet.create({
     drawSub: {
         fontSize: 12, color: 'rgba(0,0,0,0.4)', fontWeight: '600', marginTop: 4,
     },
+
+    // ── Streak Teaser ──
+    streakTeaserWrap: { paddingHorizontal: 16, marginTop: 8 },
+    streakTeaser: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+        paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20,
+    },
+    streakTeaserText: { fontSize: 13, fontWeight: '700', color: '#1a1a1a' },
 
     // ── Card ──
     cardWrapper: { alignItems: 'center' },
@@ -456,7 +579,7 @@ const styles = StyleSheet.create({
     },
     pill: {
         flexDirection: 'row', alignItems: 'center', gap: 5,
-        paddingHorizontal: 16, paddingVertical: 10,
+        paddingHorizontal: 11, paddingVertical: 10,
         borderRadius: 24,
     },
     pillActive: {
@@ -467,6 +590,28 @@ const styles = StyleSheet.create({
     pillImage: { width: 22, height: 22, marginRight: 2 },
     pillText: { fontSize: 13, fontWeight: '600', color: '#666' },
     pillTextActive: { color: '#FF6B35' },
+
+    // Vibe description line
+    vibeInfo: {
+        fontSize: 12.5, color: '#777', fontWeight: '600', textAlign: 'center',
+        marginTop: 10, paddingHorizontal: 24, lineHeight: 18,
+    },
+
+    // Help modal rows
+    helpRow: {
+        flexDirection: 'row', alignItems: 'flex-start', gap: 10,
+        width: '100%', marginBottom: 12, paddingHorizontal: 4,
+    },
+    helpText: { flex: 1, fontSize: 13.5, color: '#333', lineHeight: 19, fontWeight: '500' },
+    helpCloseBtn: { width: '100%', borderRadius: 14, overflow: 'hidden', marginTop: 8 },
+    helpCloseGradient: { paddingVertical: 14, alignItems: 'center' },
+
+    // Intensity Selector
+    intensityContainer: { marginTop: 16, paddingHorizontal: 20 },
+    intensityLabel: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 },
+    intensityRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    intensityBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', marginHorizontal: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
+    intensityBtnText: { fontSize: 14, fontWeight: '600', color: '#555', fontFamily: 'Inter_600SemiBold' },
 
     // Points
     pointsText: {

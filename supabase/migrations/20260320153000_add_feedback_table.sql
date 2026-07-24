@@ -13,6 +13,7 @@ ALTER TABLE public.feedback ENABLE ROW LEVEL SECURITY;
 
 -- Policies
 -- 1. Anyone can insert feedback (if authenticated, we'll store their ID)
+DROP POLICY IF EXISTS "Anyone can insert feedback" ON public.feedback;
 CREATE POLICY "Anyone can insert feedback" ON public.feedback
     FOR INSERT WITH CHECK (true);
 
@@ -20,9 +21,11 @@ CREATE POLICY "Anyone can insert feedback" ON public.feedback
 -- For this simple implementation, we'll use the email check if possible, 
 -- or just allow the service role / our specific admin logic to handle it.
 -- In a real app, you'd use a 'role' column in profiles.
+DROP POLICY IF EXISTS "Admins can view all feedback" ON public.feedback;
 CREATE POLICY "Admins can view all feedback" ON public.feedback
     FOR SELECT USING (
         auth.jwt() ->> 'email' = 'adminhr@andx.com'
     );
+
 
 -- Also add feedback count to profiles or just query count directly.

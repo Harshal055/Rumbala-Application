@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Love Dares — A Game for Two</title>
+<style>
+  :root{
+    --bg:#1a0a12; --bg2:#2a0e1c; --card:#33101f;
+    --accent:#ff4d6d; --accent2:#ff8fa3; --gold:#ffd6a5;
+    --text:#ffe9ef; --muted:#c98a9c;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  body{
+    font-family:'Segoe UI',system-ui,sans-serif;
+    background:radial-gradient(circle at 50% 0%,#3a1226,#1a0a12 70%);
+    color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;
+    padding:20px;
+  }
+  .app{width:100%;max-width:460px}
+  .screen{display:none;animation:fade .4s ease}
+  .screen.active{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  h1{font-size:2.4rem;text-align:center;letter-spacing:1px;
+     background:linear-gradient(90deg,var(--accent),var(--gold));
+     -webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:6px}
+  .sub{text-align:center;color:var(--muted);margin-bottom:28px;font-size:.95rem}
+  .btn{
+    display:block;width:100%;border:none;border-radius:16px;padding:16px;
+    font-size:1.05rem;font-weight:600;color:#fff;cursor:pointer;margin-bottom:14px;
+    background:linear-gradient(135deg,var(--accent),#c9184a);
+    box-shadow:0 6px 20px rgba(255,77,109,.3);transition:transform .15s,box-shadow .15s;
+  }
+  .btn:active{transform:scale(.97)}
+  .btn.ghost{background:rgba(255,255,255,.06);box-shadow:none;border:1px solid rgba(255,143,163,.3)}
+  .btn.small{padding:12px;font-size:.9rem;margin-bottom:0}
+  .opt{
+    border:1px solid rgba(255,143,163,.25);border-radius:18px;padding:18px 20px;margin-bottom:14px;
+    cursor:pointer;background:rgba(255,255,255,.03);transition:.2s;
+  }
+  .opt:active{transform:scale(.98)}
+  .opt.sel{border-color:var(--accent);background:rgba(255,77,109,.12)}
+  .opt h3{font-size:1.15rem;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .opt p{color:var(--muted);font-size:.88rem;line-height:1.4}
+  .lvl-badge{font-size:.7rem;padding:3px 9px;border-radius:20px;font-weight:700;letter-spacing:.5px}
+  .l1{background:#ffb3c1;color:#8b1e3f}
+  .l2{background:#ff758f;color:#3d0416}
+  .l3{background:#c9184a;color:#ffd6a5}
+  .card{
+    background:linear-gradient(160deg,var(--card),#240a16);
+    border:1px solid rgba(255,143,163,.2);border-radius:24px;padding:34px 26px;
+    min-height:260px;display:flex;flex-direction:column;justify-content:center;text-align:center;
+    box-shadow:0 12px 40px rgba(0,0,0,.4);margin-bottom:22px;
+  }
+  .card .tag{font-size:.72rem;color:var(--gold);letter-spacing:2px;text-transform:uppercase;margin-bottom:16px}
+  .card .dare{font-size:1.35rem;line-height:1.5;font-weight:500}
+  .card .who{margin-top:18px;color:var(--accent2);font-size:.9rem}
+  .row{display:flex;gap:12px}
+  .row .btn{flex:1}
+  .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;font-size:.85rem;color:var(--muted)}
+  .topbar b{color:var(--accent2)}
+  .link{color:var(--accent2);text-align:center;display:block;margin-top:8px;cursor:pointer;font-size:.9rem}
+  .gate{text-align:center}
+  .gate .warn{font-size:.85rem;color:var(--muted);margin:20px 0;line-height:1.6}
+  .heart{font-size:3rem;text-align:center;margin-bottom:10px}
+  .meter{display:flex;gap:6px;justify-content:center;margin:16px 0}
+  .dot{width:8px;height:8px;border-radius:50%;background:rgba(255,255,255,.15)}
+  .dot.on{background:var(--accent)}
+  .footer-note{text-align:center;color:var(--muted);font-size:.75rem;margin-top:18px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- AGE GATE -->
+  <div class="screen active" id="gate">
+    <div class="heart">❤️‍🔥</div>
+    <h1>Love Dares</h1>
+    <p class="sub">A private game for two</p>
+    <div class="gate">
+      <p class="warn">This game contains flirty, sensual and explicit content meant for consenting adult partners in private.<br><br>You must both be 18 or older to play.</p>
+      <button class="btn" onclick="show('home')">We're both 18+ — Let's play</button>
+      <button class="btn ghost" onclick="location.reload()">Leave</button>
+    </div>
+  </div>
+
+  <!-- HOME -->
+  <div class="screen" id="home">
+    <h1>Love Dares</h1>
+    <p class="sub">First, where are the two of you tonight?</p>
+    <div class="opt" onclick="pickMode('together',this)">
+      <h3>💞 Together</h3>
+      <p>You're in the same room. Physical, hands-on dares.</p>
+    </div>
+    <div class="opt" onclick="pickMode('ldr',this)">
+      <h3>📱 Long-Distance</h3>
+      <p>Apart tonight. Dares by text, voice, call & photo — nothing physical required.</p>
+    </div>
+    <button class="btn" id="modeNext" style="opacity:.4;pointer-events:none" onclick="show('levels')">Continue →</button>
+  </div>
+
+  <!-- LEVELS -->
+  <div class="screen" id="levels">
+    <div class="topbar"><span onclick="show('home')" style="cursor:pointer">← Back</span><span>Mode: <b id="modeLabel"></b></span></div>
+    <h1 style="font-size:1.9rem">Pick your heat</h1>
+    <p class="sub">Start soft. You can climb higher whenever you're both ready.</p>
+    <div class="opt" onclick="startLevel(1)">
+      <h3><span class="lvl-badge l1">LEVEL 1</span> Seductive</h3>
+      <p>Flirting, teasing, compliments, first kisses. Building the tension.</p>
+    </div>
+    <div class="opt" onclick="startLevel(2)">
+      <h3><span class="lvl-badge l2">LEVEL 2</span> Sensual</h3>
+      <p>Slow touch, whispers, undressing the moment. Getting close.</p>
+    </div>
+    <div class="opt" onclick="startLevel(3)">
+      <h3><span class="lvl-badge l3">LEVEL 3</span> Explicit</h3>
+      <p>The heat is on. Direct, passionate, all the way. 18+ only.</p>
+    </div>
+    <p class="footer-note">Golden rule: anyone can pass on any dare, any time. Consent keeps it hot. 🔒</p>
+  </div>
+
+  <!-- PLAY -->
+  <div class="screen" id="play">
+    <div class="topbar">
+      <span onclick="show('levels')" style="cursor:pointer">← Levels</span>
+      <span><b id="playMode"></b> · <b id="playLevel"></b></span>
+    </div>
+    <div class="meter" id="meter"></div>
+    <div class="card">
+      <div class="tag" id="cardTag">Draw your first dare</div>
+      <div class="dare" id="cardText">Tap “Draw a dare” to begin. 💋</div>
+      <div class="who" id="cardWho"></div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" onclick="draw()">↻ Draw a dare</button>
+      <button class="btn" onclick="nextLevel()">Heat up 🔥</button>
+    </div>
+    <span class="link" onclick="show('levels')">Change heat level</span>
+  </div>
+
+</div>
+
+<script>
+const P1="You", P2="Your partner";
+// Dares: {t: text, who: 0 both/1 p1/2 p2}. {WHO} placeholder swapped in.
+const DARES = {
+  together:{
+    1:[
+      "Look into your partner's eyes for 30 seconds without speaking, then say one thing you find irresistible about them.",
+      "Give your partner a slow compliment about their body — start at their eyes and work down.",
+      "Kiss your partner somewhere you've never kissed them before.",
+      "Whisper what you'd love to do later tonight into their ear.",
+      "Trace a fingertip along your partner's jaw and neck. Watch them react.",
+      "Slow dance together to one song, no phones, foreheads touching.",
+      "Feed your partner a bite of something and hold eye contact the whole time.",
+      "Undo one button or clasp on your partner — just one — and stop.",
+      "Bite your lip and describe the first time you were attracted to them.",
+      "Give a 20-second kiss. No hands allowed."
+    ],
+    2:[
+      "Give your partner a slow shoulder-and-neck massage for two minutes.",
+      "Kiss down your partner's neck to their collarbone, taking your time.",
+      "Blindfold your partner and trail your fingertips wherever you like for one minute.",
+      "Remove one item of your partner's clothing using only your teeth if you can.",
+      "Straddle your partner's lap and kiss them like you mean it.",
+      "Whisper the dirtiest clean thing you want — describe the scene in detail.",
+      "Run an ice cube slowly along your partner's skin, then warm the spot with a kiss.",
+      "Trade a two-minute makeout with roaming hands — clothes stay on.",
+      "Let your partner pin your wrists and kiss you however they choose.",
+      "Take turns saying one thing you want done to you tonight."
+    ],
+    3:[
+      "Take off one more piece of each other's clothing, slowly, together.",
+      "Kiss and touch your partner anywhere they guide your hand.",
+      "Tell your partner exactly what you want next — then let them do it.",
+      "Give your partner three minutes of undivided attention wherever they want it most.",
+      "Set a two-minute timer and tease without giving in — see who breaks first.",
+      "Recreate your hottest shared memory, or invent a new one right now.",
+      "Let your partner take full control for the next five minutes.",
+      "Whisper a fantasy you've never said out loud — then act out the beginning.",
+      "Trade places from the last dare and return the favor twice as slow.",
+      "No more dares needed — put the phone down and stay tangled up."
+    ]
+  },
+  ldr:{
+    1:[
+      "Send a voice note telling your partner the first thing you'd do if they were here.",
+      "Text three compliments about their body, one at a time, 30 seconds apart.",
+      "Send a selfie with your most seductive look.",
+      "Describe what you're wearing right now — then what you'd rather be wearing.",
+      "Call and read them one flirty line in your lowest voice.",
+      "Text: 'If I were there right now, I would ___.' Fill in the blank.",
+      "Send a photo of your lips after blowing them a kiss.",
+      "Tell them the exact spot you'd kiss first if they walked in.",
+      "Send a 10-second voice note of just their name, the way you'd say it up close.",
+      "Describe your ideal reunion kiss in full detail."
+    ],
+    2:[
+      "Send a photo teasing a little more skin than usual — you pick how much.",
+      "Voice note: whisper what you'd be doing to them right now if you were together.",
+      "Video call and slowly take off one layer while they watch.",
+      "Describe, step by step, how you'd undress them.",
+      "Text the play-by-play of a slow makeout as if it's happening now.",
+      "Send a photo of yourself lying down, looking up like they're above you.",
+      "Tell them where your hands would be right now — be specific.",
+      "Record a voice note of your breathing getting a little heavier as you describe them.",
+      "Set the mood on your side and describe the room like they just arrived.",
+      "Trade: each send one thing you desperately miss doing to the other."
+    ],
+    3:[
+      "Video call and follow your partner's whispered instructions.",
+      "Describe in full detail exactly what you'd do to them the second they arrived.",
+      "Send a photo or video as daring as you're comfortable with — your choice.",
+      "Talk each other through touching yourselves at the same pace.",
+      "Voice note the fantasy you'd make real tonight if there were no distance.",
+      "Take turns giving one command over the call and watching it obeyed.",
+      "Describe your body's reaction to their voice right now, out loud.",
+      "Recreate your hottest night together, narrating both sides.",
+      "Stay on the call and don't hang up until you're both undone.",
+      "Save the rest for the reunion — tell them exactly what's waiting."
+    ]
+  }
+};
+
+let mode=null, level=1, pool=[];
+const modeNames={together:"Together",ldr:"Long-Distance"};
+const lvlNames={1:"Seductive",2:"Sensual",3:"Explicit"};
+
+function show(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function pickMode(m,el){
+  mode=m;
+  document.querySelectorAll('#home .opt').forEach(o=>o.classList.remove('sel'));
+  el.classList.add('sel');
+  const n=document.getElementById('modeNext');
+  n.style.opacity=1;n.style.pointerEvents='auto';
+  document.getElementById('modeLabel').textContent=modeNames[m];
+}
+function startLevel(l){
+  level=l; refillPool();
+  document.getElementById('playMode').textContent=modeNames[mode];
+  document.getElementById('playLevel').textContent=lvlNames[l];
+  document.getElementById('cardTag').textContent="Ready when you are";
+  document.getElementById('cardText').textContent="Tap “Draw a dare” to begin. 💋";
+  document.getElementById('cardWho').textContent="";
+  drawMeter();
+  show('play');
+}
+function refillPool(){ pool=[...DARES[mode][level]]; }
+function drawMeter(){
+  const m=document.getElementById('meter'); m.innerHTML="";
+  for(let i=1;i<=3;i++){const d=document.createElement('div');d.className="dot"+(i<=level?" on":"");m.appendChild(d);}
+}
+function draw(){
+  if(pool.length===0){ refillPool(); }
+  const i=Math.floor(Math.random()*pool.length);
+  const text=pool.splice(i,1)[0];
+  document.getElementById('cardTag').textContent=modeNames[mode]+" · "+lvlNames[level];
+  document.getElementById('cardText').textContent=text;
+  const turn=Math.random()<.5?P1:P2;
+  document.getElementById('cardWho').textContent="Whose turn: "+turn+"  ·  either of you may pass";
+}
+function nextLevel(){
+  if(level<3){ startLevel(level+1); }
+  else { show('levels'); }
+}
+</script>
+</body>
+</html>

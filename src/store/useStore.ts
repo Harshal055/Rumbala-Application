@@ -42,11 +42,13 @@ interface ApplicationState {
     setPartner1: (p1: string) => void;
     setPartner2: (p2: string) => void;
 
-    // Game Mode & Vibe
+    // Game Mode, Vibe & Intensity
     mode: 'local' | 'ldr' | null;
     setMode: (mode: 'local' | 'ldr') => void;
     selectedVibe: string | null;
     setSelectedVibe: (vibe: string | null) => void;
+    selectedIntensity: number;
+    setSelectedIntensity: (intensity: number) => void;
 
     // Auth State
     isAuthenticated: boolean;
@@ -185,6 +187,12 @@ export const useStore = create<ApplicationState>((set, get) => ({
         AsyncStorage.setItem('@Rumbala_vibe', vibe || '');
     },
 
+    selectedIntensity: 2,
+    setSelectedIntensity: (intensity) => {
+        set({ selectedIntensity: intensity });
+        AsyncStorage.setItem('@Rumbala_intensity', String(intensity));
+    },
+
     isAuthenticated: false,
     userId: null,
     userEmail: null,
@@ -252,6 +260,16 @@ export const useStore = create<ApplicationState>((set, get) => ({
             get().setupRoomListeners(roomId);
         } else {
             AsyncStorage.setItem('@Rumbala_room_id', '');
+            // Bug fix: setMode('ldr') is only ever called when creating/joining
+            // a room, and was never being reset — so once a user entered LDR
+            // mode once, it stuck forever (persisted to AsyncStorage too),
+            // silently restricting every future Home-tab drawCard() to the
+            // 6-card LDR-only pool. Leaving a room (roomId -> null) is the one
+            // choke point all 5 exit paths (leave, timeout, invalid room,
+            // verification error, error fallback) already go through.
+            if (previousRoomId && get().mode === 'ldr') {
+                get().setMode('local');
+            }
         }
     },
     isHost: false,
@@ -406,6 +424,13 @@ export const useStore = create<ApplicationState>((set, get) => ({
             if (vibeFilter && vibeFilter !== 'all') {
                 pool = pool.filter(c => (get().roomId ? c.vibe : c.type) === vibeFilter);
             }
+        }
+
+        // Apply Intensity Filter ONLY for Spicy category on Home page.
+        // Fun & Romantic always show all cards. LDR always shows all cards.
+        if (mode !== 'ldr' && vibeFilter === 'spicy') {
+            const currentIntensity = get().selectedIntensity;
+            pool = pool.filter(c => (c.intensity ?? 1) === currentIntensity);
         }
 
         if (pool.length === 0) return null;
@@ -641,7 +666,11 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'game_scores', filter: `user_id=eq.${userId}` }, (payload) => {
                     const data = payload.new as any;
                     if (data) {
-                        set({ scores: { partner1: data.partner1 || 0, partner2: data.partner2 || 0 } });
+                        // Columns are partner1_score/partner2_score (see
+                        // 20260712000100_rename_game_scores_columns.sql) — this
+                        // listener reads the raw DB row, unlike api.ts's
+                        // getScores()/addPoints() which translate at the boundary.
+                        set({ scores: { partner1: data.partner1_score || 0, partner2: data.partner2_score || 0 } });
                     }
                 })
                 .subscribe();

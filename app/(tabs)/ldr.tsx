@@ -66,7 +66,7 @@ const tt = StyleSheet.create({
 });
 
 // ── Live Partner Avatar (Agora Remote Stream) ──
-function PartnerVideoCard({ name, isLive, remoteUid, isAgoraLoaded, AgoraModule, roomId }: { name: string; isLive: boolean; remoteUid: number | null, isAgoraLoaded: boolean, AgoraModule: any, roomId: string | null }) {
+function PartnerVideoCard({ name, isLive, remoteUid, AgoraModule, roomId }: { name: string; isLive: boolean; remoteUid: number | null; AgoraModule: any; roomId: string | null }) {
     const glow = useSharedValue(0.5);
     useEffect(() => {
         glow.value = withRepeat(withSequence(
@@ -80,7 +80,7 @@ function PartnerVideoCard({ name, isLive, remoteUid, isAgoraLoaded, AgoraModule,
     if (isLive && remoteUid) {
         return (
             <View style={[pv.card, glassStyles.container]}>
-                {isAgoraLoaded && AgoraModule?.RtcSurfaceView ? (
+                {AgoraModule?.RtcSurfaceView ? (
                     <AgoraModule.RtcSurfaceView 
                         style={StyleSheet.absoluteFill} 
                         canvas={{ uid: remoteUid ?? 0, channelId: roomId?.trim().toUpperCase(), renderMode: AgoraModule.RenderModeType?.RenderModeFit ?? 1 }} 
@@ -175,7 +175,7 @@ const getNumericUid = (uuid?: string): number => {
 };
 
 // ── You (Self) Video Card ──
-function SelfVideoCard({ name, isCameraOn, isAgoraLoaded, AgoraModule, engine, localUid, isJoined, roomId }: { name: string; isCameraOn: boolean; isAgoraLoaded: boolean; AgoraModule: any; engine: any; localUid: number | null; isJoined: boolean; roomId: string | null }) {
+function SelfVideoCard({ name, isCameraOn, AgoraModule, engine, localUid, isJoined, roomId }: { name: string; isCameraOn: boolean; AgoraModule: any; engine: any; localUid: number | null; isJoined: boolean; roomId: string | null }) {
     if (!isCameraOn) {
         return (
             <View style={[sv.card, glassStyles.container]}>
@@ -190,7 +190,7 @@ function SelfVideoCard({ name, isCameraOn, isAgoraLoaded, AgoraModule, engine, l
         );
     }
 
-    const canShowAgoraPreview = isJoined && isAgoraLoaded && AgoraModule?.RtcSurfaceView && engine?.current && typeof localUid === 'number';
+    const canShowAgoraPreview = isJoined && AgoraModule?.RtcSurfaceView && engine?.current && typeof localUid === 'number';
     const normalizedRoomId = roomId?.trim().toUpperCase();
 
     return (
@@ -249,7 +249,9 @@ export default function LdrScreen() {
         userId: state.userId,
         isPro: state.isPro,
         showAlert: state.showAlert,
-        setMode: state.setMode
+        setMode: state.setMode,
+        selectedIntensity: state.selectedIntensity,
+        setSelectedIntensity: state.setSelectedIntensity,
     })));
 
     const router = useRouter();
@@ -275,12 +277,12 @@ export default function LdrScreen() {
 
     const engine = useRef<any>(null);
     const [localUid, setLocalUid] = useState<number | null>(null);
-    const [hasLocalVideoFrame, setHasLocalVideoFrame] = useState(false);
     const [remoteUid, setRemoteUid] = useState<number | null>(null);
-    const [useCustomUI, setUseCustomUI] = useState(true); 
+    const [useCustomUI, setUseCustomUI] = useState(true);
     const [isJoined, setIsJoined] = useState(false);
-    const isAgoraLoaded = true;
     const isAgoraInitializing = useRef(false);
+    const isMutedRef = useRef(false);
+    const isCameraOnRef = useRef(true);
 
     // 🛡️ Session Activity Validation (Self-Cleaning)
     useEffect(() => {
@@ -399,7 +401,6 @@ export default function LdrScreen() {
             if (engine.current) leaveAgora();
             return;
         }
-        if (!isAgoraLoaded) return;
 
         let cancelled = false;
         (async () => {
@@ -411,7 +412,7 @@ export default function LdrScreen() {
         return () => {
             cancelled = true;
         };
-    }, [roomId, roomData?.room_type, roomType, isRoomValidated, isAgoraLoaded]);
+    }, [roomId, roomData?.room_type, roomType, isRoomValidated]);
 
     useEffect(() => {
         return () => {
@@ -431,7 +432,7 @@ export default function LdrScreen() {
         // Safety check for caching issues
         console.log(`--- AGORA: Using App ID (last 6): ...${AGORA_APP_ID.slice(-6)}`);
         
-        if (!isAgoraLoaded || !AgoraModule) return;
+        if (!AgoraModule) return;
         const roomCode = roomId?.trim().toUpperCase();
         if (!roomCode) {
             console.warn('--- AGORA: Missing room code, skipping channel join.');
@@ -451,9 +452,10 @@ export default function LdrScreen() {
                     console.log('--- AGORA: SUCCESSFULLY JOINED CHANNEL:', connection.channelId, 'UID:', connection.localUid);
                     setIsJoined(true);
                     if (typeof connection?.localUid === 'number') setLocalUid(connection.localUid);
+                    // Use ref to get live isMuted value — avoids stale closure
                     try {
-                        engine.current?.enableLocalAudio(!isMuted);
-                        engine.current?.muteLocalAudioStream(isMuted);
+                        engine.current?.enableLocalAudio(!isMutedRef.current);
+                        engine.current?.muteLocalAudioStream(isMutedRef.current);
                         if (engine.current?.setEnableSpeakerphone) {
                             engine.current.setEnableSpeakerphone(true);
                         }
@@ -477,10 +479,10 @@ export default function LdrScreen() {
                     setRemoteUid(null);
                 },
                 onFirstLocalVideoFrame: () => {
-                    setHasLocalVideoFrame(true);
+                    // no-op: hasLocalVideoFrame removed (unused in render)
                 },
                 onFirstLocalVideoFramePublished: () => {
-                    setHasLocalVideoFrame(true);
+                    // no-op
                 },
                 onError: (err: number, msg: string) => {
                     console.error('--- AGORA ERROR:', err, msg);
@@ -525,8 +527,8 @@ export default function LdrScreen() {
             engine.current.joinChannel('', channelId, numericUid, {
                 channelProfile: AgoraModule.ChannelProfileType.ChannelProfileCommunication,
                 clientRoleType: AgoraModule.ClientRoleType.ClientRoleBroadcaster,
-                publishMicrophoneTrack: true,
-                publishCameraTrack: isCameraOn,
+                publishMicrophoneTrack: !isMutedRef.current,
+                publishCameraTrack: isCameraOnRef.current,
                 autoSubscribeAudio: true,
                 autoSubscribeVideo: true,
             });
@@ -545,10 +547,12 @@ export default function LdrScreen() {
             engine.current = null;
             setIsJoined(false);
             setRemoteUid(null);
-            setHasLocalVideoFrame(false);
             setLocalUid(null);
         }
     };
+
+    useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+    useEffect(() => { isCameraOnRef.current = isCameraOn; }, [isCameraOn]);
 
     useEffect(() => {
         if (engine.current && isJoined) {
@@ -561,7 +565,6 @@ export default function LdrScreen() {
         if (engine.current && isJoined) {
             engine.current.enableLocalVideo(isCameraOn);
             engine.current.muteLocalVideoStream(!isCameraOn);
-            if (!isCameraOn) setHasLocalVideoFrame(false);
         }
     }, [isCameraOn, isJoined]);
 
@@ -636,14 +639,23 @@ export default function LdrScreen() {
         }
         if (!isPro && cardCount <= 0) { showAlert('No Cards', 'Buy more cards from the Shop to continue!'); return; }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-        const card = useStore.getState().drawCard(selectedLdrVibe === 'all' ? 'ldr' : selectedLdrVibe);
+
+        // Bug Fix: Pass vibeFilter correctly so drawCard respects both type=ldr AND vibe
+        // When selectedLdrVibe is 'all', pass null so drawCard uses mode='ldr' logic (type=ldr, any vibe)
+        // When selectedLdrVibe is a specific vibe like 'fun'/'romantic'/'spicy', pass it so vibe is also filtered
+        const vibeArg = selectedLdrVibe === 'all' ? null : selectedLdrVibe;
+        const card = useStore.getState().drawCard(vibeArg);
         if (!card) {
             showAlert('Wait!', 'Could not draw a card. Make sure you have enough cards in your inventory!');
             return;
         }
         try {
             await syncDrawnCardV2(roomId, card);
-            if (!isPro) setCardCount(cardCount - 1);
+            // drawCard() above already decrements+syncs cardCount when !isPro.
+            // This used to redo it with the stale pre-draw `cardCount` closure
+            // value — harmless today only because it happened to land on the
+            // same number, but a landmine (and skips the Supabase sync that
+            // drawCard() already performs).
             if (roomData) setRoomData({ ...roomData, current_card: card });
         } catch (e: any) { showAlert('Error', e.message || 'Failed to drawing dare.'); }
     };
@@ -770,7 +782,7 @@ export default function LdrScreen() {
                     <ScrollView contentContainerStyle={styles.setupScroll} showsVerticalScrollIndicator={false}>
                         <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.setupHeader}>
                             <View style={styles.setupIconWrap}>
-                                <LinearGradient colors={['#2D1B69', '#FF6B35']} style={styles.setupIcon}>
+                                <LinearGradient colors={['#2D1B69', '#5B3FCF']} style={styles.setupIcon}>
                                     <Ionicons name="heart" size={28} color="#fff" />
                                 </LinearGradient>
                             </View>
@@ -841,7 +853,7 @@ export default function LdrScreen() {
                                         ) : (
                                             <>
                                                 <Ionicons name="sparkles" size={20} color="#fff" />
-                                                <Text style={styles.primaryBtnText}>Initialize Room</Text>
+                                                <Text style={styles.primaryBtnText}>Start Room</Text>
                                             </>
                                         )}
                                     </LinearGradient>
@@ -990,14 +1002,12 @@ export default function LdrScreen() {
                                         name={partner2 || 'Partner'} 
                                         isLive={partnerConnected} 
                                         remoteUid={remoteUid} 
-                                        isAgoraLoaded={isAgoraLoaded}
                                         AgoraModule={AgoraModule}
                                         roomId={roomId}
                                     />
                                     <SelfVideoCard 
                                         name={partner1 || 'You'} 
                                         isCameraOn={isCameraOn} 
-                                        isAgoraLoaded={isAgoraLoaded}
                                         AgoraModule={AgoraModule}
                                         engine={engine}
                                         localUid={localUid}
@@ -1007,7 +1017,7 @@ export default function LdrScreen() {
                                 </View>
                             ) : (
                                 <View style={styles.uikitWrapper}>
-                                {isAgoraLoaded && UIKitModule ? (
+                                {UIKitModule ? (
                                     <UIKitModule 
                                         connectionData={{
                                             appId: AGORA_APP_ID,
@@ -1063,6 +1073,7 @@ export default function LdrScreen() {
                             <Text style={styles.drawPromptSub}>
                                 {roomData?.current_turn_user_id === userId ? 'Draw a dare to start your turn!' : `${partner2 || 'Partner'} is currently picking their dare...`}
                             </Text>
+
                             {roomData?.current_turn_user_id === userId && (
                                 <TouchableOpacity style={styles.drawBtnWrap} onPress={handleDrawDare} activeOpacity={0.85}>
                                     <LinearGradient colors={['#FF9800', '#FF6B35']} style={styles.drawBtn} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
@@ -1219,6 +1230,12 @@ const styles = StyleSheet.create({
     doneBtn: { flex: 2, borderRadius: 12, overflow: 'hidden' },
     doneBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
     doneBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+
+    intensityContainer: { width: '100%', paddingHorizontal: 0, marginTop: 16, marginBottom: 16 },
+    intensityLabel: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5, textAlign: 'center' },
+    intensityRow: { flexDirection: 'row', justifyContent: 'space-between' },
+    intensityBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', marginHorizontal: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
+    intensityBtnText: { fontSize: 13, fontWeight: '600', color: '#555', fontFamily: 'Inter_600SemiBold' },
 
     drawPromptCard: { borderRadius: 22, padding: 24, alignItems: 'center' },
     drawPromptTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 8 },

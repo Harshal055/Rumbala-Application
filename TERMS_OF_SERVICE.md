@@ -1,6 +1,6 @@
 # Terms of Service
 
-**Last Updated:** May 2026
+**Last Updated:** July 22, 2026
 
 Welcome to Rumbala. By using our application, you agree to these Terms of Service. Please read them carefully.
 
@@ -32,4 +32,4 @@ To the maximum extent permitted by law, Rumbala and its developers shall not be 
 We reserve the right to modify these terms at any time. We will notify users of any significant changes. Your continued use of the application after changes constitute acceptance of the new terms.
 
 ## 9. Contact Us
-If you have any questions about these Terms, please contact us through the support section of the application.
+If you have any questions about these Terms, please contact us at sanjognetwork@gmail.com or through the support section of the application.

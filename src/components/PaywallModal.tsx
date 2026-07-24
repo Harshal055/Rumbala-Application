@@ -8,7 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import LegalModal from './LegalModal';
 import { glassStyles, glassTokens } from '../constants/glass';
-import { getOfferings } from '../services/revenueCatService';
+import { getOfferings, restorePurchases, checkProEntitlement } from '../services/revenueCatService';
+import { useStore } from '../store/useStore';
 import { PurchasesPackage } from 'react-native-purchases';
 import { PAYWALL_FEATURES, resolvePlanPackages, getPackageKind } from '../constants/pricing';
 
@@ -26,6 +27,28 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
     const [loading, setLoading] = useState(true);
     const [legalVisible, setLegalVisible] = useState(false);
     const [legalType, setLegalType] = useState<'terms' | 'privacy'>('terms');
+    const [isRestoring, setIsRestoring] = useState(false);
+    const setIsPro = useStore(state => state.setIsPro);
+    const showAlert = useStore(state => state.showAlert);
+
+    // Apple requires a working Restore Purchases control on any paywall.
+    const handleRestore = async () => {
+        setIsRestoring(true);
+        try {
+            const info = await restorePurchases();
+            if (checkProEntitlement(info)) {
+                setIsPro(true);
+                showAlert('✅ Restored!', 'Your Pro subscription has been restored.');
+                onClose();
+            } else {
+                showAlert('Not Found', 'No active Pro subscription found for this account.');
+            }
+        } catch (e: any) {
+            showAlert('Restore Error', e.message);
+        } finally {
+            setIsRestoring(false);
+        }
+    };
 
     useEffect(() => {
         if (visible) {
@@ -180,7 +203,9 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
                             </Text>
 
                             <View style={s.legalLinks}>
-                                <TouchableOpacity><Text style={s.legalText}>Restore Purchase</Text></TouchableOpacity>
+                                <TouchableOpacity onPress={handleRestore} disabled={isRestoring}>
+                                    <Text style={s.legalText}>{isRestoring ? 'Restoring...' : 'Restore Purchase'}</Text>
+                                </TouchableOpacity>
                                 <View style={s.legalDot} />
                                 <TouchableOpacity onPress={() => { setLegalType('terms'); setLegalVisible(true); }}>
                                     <Text style={s.legalText}>Terms of Service</Text>

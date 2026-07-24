@@ -23,3 +23,10 @@ FINAL_RELEASE_KEY_INFO.txt
 google-services.json
 .env*
 ! .env.example
+play-console-key.json
+
+# Local artifacts
+*.log
+tmp/
+project_code.md
+build_log.txt

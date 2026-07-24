@@ -14,9 +14,17 @@ export default {
     backgroundColor: "#FF6B35"
   },
   ios: {
-    supportsTablet: true,
+    supportsTablet: false,
     bundleIdentifier: "com.andx.rumbala",
-    icon: "./assets/icon.png"
+    icon: "./assets/icon.png",
+    infoPlist: {
+      NSCameraUsageDescription:
+        "Rumbala uses your camera for video calls with your partner in LDR mode and to capture photo memories of completed dares.",
+      NSMicrophoneUsageDescription:
+        "Rumbala uses your microphone so you and your partner can hear each other during video calls in LDR mode.",
+      NSPhotoLibraryAddUsageDescription:
+        "Rumbala saves photo memories of your completed dares to your photo library."
+    }
   },
   android: {
     edgeToEdgeEnabled: true,
@@ -33,7 +41,9 @@ export default {
   web: {},
   plugins: [
     "expo-dev-client",
-    "@react-native-google-signin/google-signin"
+    "@react-native-google-signin/google-signin",
+    "expo-camera",
+    "expo-notifications"
   ],
 
   // Add this line (or update if it exists)

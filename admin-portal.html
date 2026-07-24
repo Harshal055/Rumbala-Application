@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rumbala Admin Provisioning</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Pacifico&display=swap');
+        
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #16213E, #0F3460, #E94560);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            color: white;
+            padding: 20px;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 40px;
+            width: 100%;
+            max-width: 480px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            font-family: 'Pacifico', cursive;
+            font-size: 2.5rem;
+            text-align: center;
+            margin-bottom: 5px;
+            background: linear-gradient(to right, #FF9800, #FF6B35);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        p.subtitle {
+            text-align: center;
+            color: rgba(255,255,255,0.7);
+            margin-bottom: 30px;
+            font-size: 0.9rem;
+        }
+
+        .input-group { margin-bottom: 20px; }
+        
+        label {
+            display: block;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+            color: rgba(255,255,255,0.8);
+            font-weight: 600;
+        }
+
+        input {
+            width: 100%;
+            padding: 14px 16px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            color: white;
+            font-size: 1rem;
+            font-family: 'Inter', sans-serif;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        input:focus {
+            border-color: #FF6B35;
+            background: rgba(0,0,0,0.4);
+            box-shadow: 0 0 15px rgba(255, 107, 53, 0.3);
+        }
+
+        button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #FF6B35, #E65100);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 53, 0.4);
+        }
+
+        button:hover { transform: scale(1.02); }
+        button:disabled { background: #555; cursor: not-allowed; transform: none; }
+
+        #statusBox {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        
+        .status-success { background: rgba(16, 185, 129, 0.2); border: 1px solid #10B981; color: #34D399; }
+        .status-error { background: rgba(239, 68, 68, 0.2); border: 1px solid #EF4444; color: #F87171; }
+    </style>
+</head>
+<body>
+
+    <div class="glass-panel">
+        <h1>Rumbala</h1>
+        <p class="subtitle">PIN-Secured Admin Portal</p>
+
+        <div id="provisionForm">
+            <div class="input-group">
+                <label>Secret PIN</label>
+                <input type="password" id="secretPin" placeholder="Enter PIN to unlock">
+            </div>
+
+            <div class="input-group">
+                <label>User's Email to promote</label>
+                <input type="email" id="targetEmail" placeholder="user@example.com">
+            </div>
+            
+            <button id="createBtn" onclick="promoteToAdmin()">Grant Admin Access</button>
+        </div>
+
+        <div id="statusBox"></div>
+    </div>
+
+    <script>
+        // Uses your safe Public Anon Key! No Service Key needed.
+        const SUPABASE_URL = 'https://lhfxiueygatmzvchcmyc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxoZnhpdWV5Z2F0bXp2Y2hjbXljIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM0ODc4ODQsImV4cCI6MjA4OTA2Mzg4NH0.61c72UdGrTy81epas9neuHgLTjZUSauD3rlJNNFWHrk';
+
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function promoteToAdmin() {
+            const secretPin = document.getElementById('secretPin').value.trim();
+            const targetEmail = document.getElementById('targetEmail').value.trim().toLowerCase();
+            const btn = document.getElementById('createBtn');
+
+            if (!secretPin || !targetEmail) { 
+                showStatus('Enter both the PIN and the Email.', 'error'); 
+                return; 
+            }
+
+            btn.disabled = true;
+            btn.innerText = 'Verifying & Promoting...';
+            document.getElementById('statusBox').style.display = 'none';
+
+            try {
+                // Call the secure Database Function that checks the PIN
+                const { data, error } = await supabaseClient.rpc('grant_admin_with_pin', {
+                    secret_pin: secretPin,
+                    target_email: targetEmail
+                });
+
+                if (error) {
+                    if (error.message.includes('Invalid PIN')) {
+                        throw new Error('Incorrect PIN. Access Denied.');
+                    }
+                    if (error.message.includes('User not found')) {
+                        throw new Error('User not found. They must open the app and create an account first before you can make them an Admin.');
+                    }
+                    throw error;
+                }
+
+                showStatus(`✅ Success! ${targetEmail} is now an Admin.`, 'success');
+                document.getElementById('targetEmail').value = '';
+                document.getElementById('secretPin').value = '';
+
+            } catch (err) {
+                showStatus(`❌ ${err.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Grant Admin Access';
+            }
+        }
+
+        function showStatus(message, type) {
+            const box = document.getElementById('statusBox');
+            box.innerText = message;
+            box.style.display = 'block';
+            box.className = type === 'error' ? 'status-error' : 'status-success';
+        }
+    </script>
+</body>
+</html>

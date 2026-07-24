@@ -240,18 +240,18 @@ export const getUserCards = async (userId: string) => {
 };
 
 export const addUserCards = async (userId: string, count: number, sku?: string) => {
-    // Call the exact RPC to safely bypass triggers
+    // Card grant + purchase record happen atomically inside the RPC (both
+    // require SECURITY DEFINER since `purchases` has no client INSERT
+    // policy — see 20260712000200_fix_purchase_recording.sql). The old code
+    // path called a separate client-side recordPurchase() insert here, which
+    // RLS silently rejected on every purchase.
     const { data, error: updateError } = await supabase.rpc('add_purchased_cards', {
         p_user_id: userId,
-        p_count: count
+        p_count: count,
+        p_sku: sku ?? null,
     });
-    
-    if (updateError) throw new Error(updateError.message);
 
-    // Record purchase if sku provided
-    if (sku) {
-        await recordPurchase(userId, sku, count);
-    }
+    if (updateError) throw new Error(updateError.message);
 
     return data;
 };
@@ -269,25 +269,6 @@ export const claimWeeklyFreeCards = async (userId: string) => {
 };
 
 // ─── PURCHASES ────────────────────────────────────────────────────────────────
-
-export const recordPurchase = async (userId: string, sku: string, cardCount: number) => {
-    const { data, error } = await supabase
-        .from('purchases')
-        .insert({
-            user_id: userId,
-            sku,
-            card_count: cardCount,
-            amount_paise: 0, // Store handles payment
-            metadata: {
-                source: 'revenuecat',
-                granted_at: new Date().toISOString(),
-            },
-        })
-        .select()
-        .single();
-    if (error) console.error('Purchase recording error:', error);
-    return data;
-};
 
 export const getPurchaseHistory = async (userId: string, limit = 50, offset = 0) => {
     const { data, error } = await supabase
@@ -343,52 +324,33 @@ export const createRoom = async (hostUserId: string, hostName: string, roomType:
 
 export const joinRoom = async (roomCode: string, guestUserId: string, guestName: string) => {
     roomCode = roomCode.replace(/\s+/g, '').toUpperCase();
-    console.log('--- BLIND JOIN ATTEMPT:', roomCode, 'for user:', guestUserId);
-    
+    console.log('--- JOIN ATTEMPT:', roomCode, 'for user:', guestUserId);
+
     // Validate UUID to prevent PostgREST filter injection
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(guestUserId)) {
         throw new Error('Invalid user ID format');
     }
-    
-    // We attempt an update directly. We check:
-    // 1. code matches
-    // 2. is_active is true
-    // 3. guest_user_id is either NULL or the same guest (re-join)
-    const { data, error, count } = await supabase
-        .from('rooms')
-        .update({ guest_user_id: guestUserId, guest_name: guestName })
-        .eq('code', roomCode)
-        .eq('is_active', true)
-        .or(`guest_user_id.is.null,guest_user_id.eq.${guestUserId}`)
-        .select()
-        .maybeSingle();
+
+    // Joining goes through the join_room_by_code RPC (SECURITY DEFINER), not a
+    // direct client UPDATE. The old direct-UPDATE approach relied on a broad
+    // RLS policy that allowed updating ANY open room regardless of whether the
+    // caller actually supplied its code — effectively letting anyone hijack a
+    // random active room. The RPC enforces the code match, active status, and
+    // guest-slot checks server-side; base-table RLS is back to host/guest-only.
+    const { data, error } = await supabase.rpc('join_room_by_code', {
+        p_code: roomCode,
+        p_guest_user_id: guestUserId,
+        p_guest_name: guestName,
+    });
 
     if (error) {
-        console.error('SUPABASE BLIND JOIN ERROR:', error);
-        throw new Error(`Join failure: ${error.message}`);
+        console.error('SUPABASE JOIN ERROR:', error);
+        // Surface the RPC's specific exception message (e.g. "Room is full.")
+        throw new Error(error.message || 'Join failure');
     }
 
-    // If update affected NO rows, we need to know WHY.
-    if (!data) {
-        console.warn('BLIND JOIN FAILED: No record updated. Checking why...');
-        
-        // Final fallback: Is the room already full or non-existent?
-        const { data: check } = await supabase
-            .from('rooms')
-            .select('guest_user_id, is_active')
-            .eq('code', roomCode)
-            .maybeSingle();
-            
-        if (!check) throw new Error(`Room "${roomCode}" not found. (Is RLS enabled on Supabase?)`);
-        if (!check.is_active) throw new Error('Meeting has ended.');
-        if (check.guest_user_id && check.guest_user_id !== guestUserId) throw new Error('Room is full.');
-        
-        console.warn('POSSIBLE RLS BLOCK on join return, but room should exist.');
-        return { code: roomCode, guest_user_id: guestUserId };
-    }
-
-    console.log('--- BLIND JOIN SUCCESS:', data.code);
+    console.log('--- JOIN SUCCESS:', data?.code);
     return data;
 };
 
@@ -468,6 +430,12 @@ export const getMessages = async (roomCode: string, limit = 50, offset = 0) => {
 
 // ─── GAME SCORES ──────────────────────────────────────────────────────────────
 
+// Note: the `game_scores` table stores these as partner1_score / partner2_score
+// (renamed in 20260712000100_rename_game_scores_columns.sql to avoid colliding
+// with the unrelated `profiles.partner1` / `partner2` name columns). The API
+// surface below still speaks partner1/partner2 so the rest of the app (store,
+// UI) doesn't need to change.
+
 export const addPoints = async (
     userId: string,
     winner: 'partner1' | 'partner2' | 'both',
@@ -475,7 +443,7 @@ export const addPoints = async (
 ) => {
     const { data: current, error: fetchError } = await supabase
         .from('game_scores')
-        .select('partner1, partner2')
+        .select('partner1_score, partner2_score')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -485,25 +453,25 @@ export const addPoints = async (
             .from('game_scores')
             .insert({
                 user_id: userId,
-                partner1: winner === 'partner1' || winner === 'both' ? points : 0,
-                partner2: winner === 'partner2' || winner === 'both' ? points : 0,
+                partner1_score: winner === 'partner1' || winner === 'both' ? points : 0,
+                partner2_score: winner === 'partner2' || winner === 'both' ? points : 0,
             })
             .select()
             .maybeSingle();
         if (error) throw new Error(error.message);
-        return data;
+        return data ? { partner1: data.partner1_score, partner2: data.partner2_score } : data;
     }
     if (fetchError) throw new Error(fetchError.message);
 
     const updates = {
-        partner1:
+        partner1_score:
             winner === 'partner1' || winner === 'both'
-                ? (current?.partner1 ?? 0) + points
-                : current?.partner1 ?? 0,
-        partner2:
+                ? (current?.partner1_score ?? 0) + points
+                : current?.partner1_score ?? 0,
+        partner2_score:
             winner === 'partner2' || winner === 'both'
-                ? (current?.partner2 ?? 0) + points
-                : current?.partner2 ?? 0,
+                ? (current?.partner2_score ?? 0) + points
+                : current?.partner2_score ?? 0,
     };
     const { data, error } = await supabase
         .from('game_scores')
@@ -512,7 +480,7 @@ export const addPoints = async (
         .select()
         .maybeSingle();
     if (error) throw new Error(error.message);
-    return data;
+    return data ? { partner1: data.partner1_score, partner2: data.partner2_score } : data;
 };
 
 export const getScores = async (userId: string) => {
@@ -523,14 +491,15 @@ export const getScores = async (userId: string) => {
         .eq('user_id', userId)
         .maybeSingle();
     if (error) throw new Error(error.message);
-    return data;
+    if (!data) return data;
+    return { ...data, partner1: data.partner1_score, partner2: data.partner2_score };
 };
 
 export const getGameStats = async (userId: string) => {
     const [scoresResult, historyResult, profileResult] = await Promise.all([
         supabase
             .from('game_scores')
-            .select('partner1, partner2')
+            .select('partner1_score, partner2_score')
             .eq('user_id', userId)
             .maybeSingle(),
         supabase
@@ -544,7 +513,8 @@ export const getGameStats = async (userId: string) => {
             .maybeSingle(),
     ]);
 
-    const scores = scoresResult.data || { partner1: 0, partner2: 0 };
+    const scoresRow = scoresResult.data || { partner1_score: 0, partner2_score: 0 };
+    const scores = { partner1: scoresRow.partner1_score, partner2: scoresRow.partner2_score };
     const historyCount = historyResult.count || 0;
     const cardCount = profileResult.data?.card_count || 0;
 
@@ -703,7 +673,10 @@ export const adminGrantPro = async (userId: string, isPro: boolean) => {
 
 export const adminGetUserStats = async (userId: string) => {
     // Get relationship scores and history count
-    const { data: scores } = await supabase.from('game_scores').select('*').eq('user_id', userId).single();
+    const { data: scoresRow } = await supabase.from('game_scores').select('*').eq('user_id', userId).single();
+    const scores = scoresRow
+        ? { ...scoresRow, partner1: scoresRow.partner1_score, partner2: scoresRow.partner2_score }
+        : scoresRow;
     const { count: historyCount } = await supabase.from('game_history').select('*', { count: 'exact', head: true }).eq('user_id', userId);
     return { scores, historyCount: historyCount || 0 };
 };

@@ -25,7 +25,7 @@ const GET_META = (pkg: PurchasesPackage) => {
 
     if (type === 'ANNUAL' || id.includes('year') || id.includes('annual')) {
         return {
-            title: 'Annual Pro', subtitle: 'Save 40% • Best for couples',
+            title: 'Annual Pro', subtitle: 'Save 50% • Best for couples',
             icon: '🚀', badge: 'BEST DEAL', badgeColor: '#10B981', iconName: 'rocket' as const,
             colors: ['rgba(255, 95, 109, 0.15)', 'rgba(255, 195, 113, 0.15)'] as const,
         };
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     proHeroBtn: { backgroundColor: '#FF66B2', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
     proHeroBtnText: { color: '#1A111B', fontSize: 13, fontWeight: '800' },
     bestValueBadgePro: {
-        position: 'absolute', top: -10, left: 16,
+        position: 'absolute', top: 12, left: 16,
         backgroundColor: '#FF66B2', paddingHorizontal: 10, paddingVertical: 4,
         borderRadius: 20, zIndex: 5
     },

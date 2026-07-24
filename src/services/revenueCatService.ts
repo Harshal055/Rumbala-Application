@@ -123,6 +123,7 @@ const MOCK_OFFERING = {
 
 // Product Mapping for Consumables
 const PRODUCT_CARD_MAP: Record<string, number> = {
+    consumable: 5, // Fallback for Test Store
     dare_card_1: 1,
     dare_card_5: 5,
     dare_card_10: 10,

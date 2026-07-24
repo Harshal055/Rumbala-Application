@@ -6,6 +6,7 @@ export interface DareCard {
   vibe?: CardType; // Sub-category (e.g. for LDR cards: fun, romantic, spicy)
   text: string;
   timer?: number; // Optional timer in seconds for timed dares
+  intensity?: number; // 1 = Mild, 2 = Hot, 3 = Extreme
 }
 
 export const CARDS: DareCard[] = [
@@ -30,14 +31,14 @@ export const CARDS: DareCard[] = [
   { id: 'r8', type: 'romantic', text: 'Write a quick 4-line poem about me.', timer: 120 },
 
   // --- SPICY ---
-  { id: 's1', type: 'spicy', text: 'Kiss me on the neck.' },
-  { id: 's2', type: 'spicy', text: 'Whisper your deepest fantasy into my ear.' },
-  { id: 's3', type: 'spicy', text: 'Take off one piece of clothing.' },
-  { id: 's4', type: 'spicy', text: 'Give me a passionate kiss for 10 seconds.', timer: 10 },
-  { id: 's5', type: 'spicy', text: 'Let me blindfold you and feed you something sweet.' },
-  { id: 's6', type: 'spicy', text: 'Trace my lips with your fingers.' },
-  { id: 's7', type: 'spicy', text: 'Tell me the hottest thing I wear.' },
-  { id: 's8', type: 'spicy', text: 'Give me a sensuous 2-minute back rub.', timer: 120 },
+  { id: 's1', type: 'spicy', text: 'Kiss me on the neck.', intensity: 2 },
+  { id: 's2', type: 'spicy', text: 'Whisper your deepest fantasy into my ear.', intensity: 1 },
+  { id: 's3', type: 'spicy', text: 'Take off one piece of clothing.', intensity: 2 },
+  { id: 's4', type: 'spicy', text: 'Give me a passionate kiss for 10 seconds.', timer: 10, intensity: 2 },
+  { id: 's5', type: 'spicy', text: 'Let me blindfold you and feed you something sweet.', intensity: 1 },
+  { id: 's6', type: 'spicy', text: 'Trace my lips with your fingers.', intensity: 1 },
+  { id: 's7', type: 'spicy', text: 'Tell me the hottest thing I wear.', intensity: 1 },
+  { id: 's8', type: 'spicy', text: 'Give me a sensuous 2-minute back rub.', timer: 120, intensity: 2 },
 
   // --- LDR ---
   { id: 'l1', type: 'ldr', vibe: 'spicy', text: 'Send me a voice note saying "I love you" in the sexiest voice.' },
@@ -67,13 +68,13 @@ export const CARDS: DareCard[] = [
   { id: '23', type: 'romantic', text: 'Plan out our dream vacation itinerary in 3 sentences ✈️🏝️' },
 
   // Spicy (24-30)
-  { id: '24', type: 'spicy', text: 'Describe exactly what you’d do if we were alone in a locked elevator right now 🛗🔥' },
-  { id: '25', type: 'spicy', text: 'Send a voice note whispering your favorite physical feature of mine 🤫💦', timer: 20 },
-  { id: '26', type: 'spicy', text: 'Rate your current thoughts about me from 1-10 on the spicy scale 🌶️🥵' },
-  { id: '27', type: 'spicy', text: 'Tell me the most adventurous place you’d want to make out with me 🗺️💋' },
-  { id: '28', type: 'spicy', text: 'Show me the outfit you’d wear if you wanted to guarantee I couldn’t keep my hands off you 👗👔🔥' },
-  { id: '29', type: 'spicy', text: 'Describe the way you want me to touch you right now without using any banned words 🤐✨' },
-  { id: '30', type: 'spicy', text: 'Send the most suggestive emoji combo you can think of and let me guess what it means 🍆🍑💦' },
+  { id: '24', type: 'spicy', text: 'Describe exactly what you’d do if we were alone in a locked elevator right now 🛗🔥', intensity: 1 },
+  { id: '25', type: 'spicy', text: 'Send a voice note whispering your favorite physical feature of mine 🤫💦', timer: 20, intensity: 1 },
+  { id: '26', type: 'spicy', text: 'Rate your current thoughts about me from 1-10 on the spicy scale 🌶️🥵', intensity: 1 },
+  { id: '27', type: 'spicy', text: 'Tell me the most adventurous place you’d want to make out with me 🗺️💋', intensity: 1 },
+  { id: '28', type: 'spicy', text: 'Show me the outfit you’d wear if you wanted to guarantee I couldn’t keep my hands off you 👗👔🔥', intensity: 1 },
+  { id: '29', type: 'spicy', text: 'Describe the way you want me to touch you right now without using any banned words 🤐✨', intensity: 2 },
+  { id: '30', type: 'spicy', text: 'Send the most suggestive emoji combo you can think of and let me guess what it means 🍆🍑💦', intensity: 1 },
 
   // LDR (31-38)
   { id: '31', type: 'ldr', vibe: 'romantic', text: 'Order me a surprise little dessert right now 🍰🛵' },
@@ -120,21 +121,21 @@ export const CARDS: DareCard[] = [
   { id: '68', type: 'romantic', text: 'Hold your hand up to the screen and tell me why I am your favorite person 🤝💖' },
 
   // Spicy (69-83)
-  { id: '69', type: 'spicy', text: 'Tell me your biggest turn-on that you’ve never fully confessed before 🤫🔥' },
-  { id: '70', type: 'spicy', text: 'Describe exactly what you would do if I was wearing your favorite outfit right now 👗🥵', timer: 60 },
-  { id: '71', type: 'spicy', text: 'Send a voice note of your best "bedroom voice" whispering my name 🎙️💦' },
-  { id: '72', type: 'spicy', text: 'Tell me the dirtiest thought you’ve had about us while at the gym 🏋️‍♂️😈' },
-  { id: '73', type: 'spicy', text: 'Send a picture of you biting your lip while looking right at the camera 🫦📸' },
-  { id: '74', type: 'spicy', text: 'Rate my kissing skills from 1-10 and explain exactly how I earned that rating 💋📈' },
-  { id: '75', type: 'spicy', text: 'Tell me where your favorite unexpected place to be kissed is 🎯😘' },
-  { id: '76', type: 'spicy', text: 'Describe a new position or fantasy you want to try next time we have absolute privacy 🤸‍♀️🔥' },
-  { id: '77', type: 'spicy', text: 'Unbutton one button or take off one piece of clothing right now 👚👀' },
-  { id: '78', type: 'spicy', text: 'Tell me what the most sensitive spot on your body is and how you want me to touch it 🪶✨' },
-  { id: '79', type: 'spicy', text: 'Send me a risky text message that you would be terrified if anyone else saw 📱😳' },
-  { id: '80', type: 'spicy', text: 'Whisper exactly what you want me to do to you tonight in under 15 seconds 🤫👂', timer: 15 },
-  { id: '81', type: 'spicy', text: 'Show me the sexiest piece of clothing you own and tell me when you plan to wear it 👙👔' },
-  { id: '82', type: 'spicy', text: 'Tell me the exact explicit thought you had the first time we kissed 💭🔥' },
-  { id: '83', type: 'spicy', text: 'Slowly eat a piece of fruit or chocolate while maintaining intense eye contact with me 🍓🍫', timer: 30 },
+  { id: '69', type: 'spicy', text: 'Tell me your biggest turn-on that you’ve never fully confessed before 🤫🔥', intensity: 1 },
+  { id: '70', type: 'spicy', text: 'Describe exactly what you would do if I was wearing your favorite outfit right now 👗🥵', timer: 60, intensity: 2 },
+  { id: '71', type: 'spicy', text: 'Send a voice note of your best "bedroom voice" whispering my name 🎙️💦', intensity: 2 },
+  { id: '72', type: 'spicy', text: 'Tell me the dirtiest thought you’ve had about us while at the gym 🏋️‍♂️😈', intensity: 2 },
+  { id: '73', type: 'spicy', text: 'Send a picture of you biting your lip while looking right at the camera 🫦📸', intensity: 1 },
+  { id: '74', type: 'spicy', text: 'Rate my kissing skills from 1-10 and explain exactly how I earned that rating 💋📈', intensity: 1 },
+  { id: '75', type: 'spicy', text: 'Tell me where your favorite unexpected place to be kissed is 🎯😘', intensity: 1 },
+  { id: '76', type: 'spicy', text: 'Describe a new position or fantasy you want to try next time we have absolute privacy 🤸‍♀️🔥', intensity: 2 },
+  { id: '77', type: 'spicy', text: 'Unbutton one button or take off one piece of clothing right now 👚👀', intensity: 2 },
+  { id: '78', type: 'spicy', text: 'Tell me what the most sensitive spot on your body is and how you want me to touch it 🪶✨', intensity: 2 },
+  { id: '79', type: 'spicy', text: 'Send me a risky text message that you would be terrified if anyone else saw 📱😳', intensity: 1 },
+  { id: '80', type: 'spicy', text: 'Whisper exactly what you want me to do to you tonight in under 15 seconds 🤫👂', timer: 15, intensity: 2 },
+  { id: '81', type: 'spicy', text: 'Show me the sexiest piece of clothing you own and tell me when you plan to wear it 👙👔', intensity: 1 },
+  { id: '82', type: 'spicy', text: 'Tell me the exact explicit thought you had the first time we kissed 💭🔥', intensity: 2 },
+  { id: '83', type: 'spicy', text: 'Slowly eat a piece of fruit or chocolate while maintaining intense eye contact with me 🍓🍫', timer: 30, intensity: 2 },
 
   // LDR (84-98)
   { id: '84', type: 'ldr', vibe: 'fun', text: 'Send me a 5-second video of your current view, no matter how boring it is 🪟📱' },
@@ -183,19 +184,19 @@ export const CARDS: DareCard[] = [
   { id: '123', type: 'romantic', text: 'If we had a whole weekend with no responsibilities, what’s the first thing you\'d plan for us? 🗓️🛋️' },
 
   // Spicy (124-136)
-  { id: '124', type: 'spicy', text: 'Tell me about a time you were completely distracted by how good I looked 👀🔥' },
-  { id: '125', type: 'spicy', text: 'Describe the exact way you want me to greet you the next time we are alone behind closed doors 🚪🥵' },
-  { id: '126', type: 'spicy', text: 'Send a voice note of you taking a deep breath and letting it out slowly... right near the mic 🎙️😮‍💨' },
-  { id: '127', type: 'spicy', text: 'Tell me which part of my body you think about the most when we are apart 💭👅' },
-  { id: '128', type: 'spicy', text: 'Run your hands through your hair slowly while maintaining intense eye contact 💆‍♂️🔥', timer: 20 },
-  { id: '129', type: 'spicy', text: 'Describe your favorite memory of us being physically close in vivid detail 🧠🔥' },
-  { id: '130', type: 'spicy', text: 'Tell me a fantasy you have that involves just the two of us and a locked hotel room 🏨🗝️' },
-  { id: '131', type: 'spicy', text: 'Whisper your favorite spicy word in your sexiest tone 🤫' },
-  { id: '132', type: 'spicy', text: 'What is one thing I wear that makes it impossible for you to focus? 👗👖🔥' },
-  { id: '133', type: 'spicy', text: 'Bite your bottom lip and hold it for 10 seconds while staring at me 🫦', timer: 10 },
-  { id: '134', type: 'spicy', text: 'Tell me exactly what goes through your mind when I lean in close to you 🧠💋' },
-  { id: '135', type: 'spicy', text: 'Send a picture of your neck and collarbone right now 📸🔥' },
-  { id: '136', type: 'spicy', text: 'Describe the temperature of the room using only suggestive adjectives 🌡️🥵' },
+  { id: '124', type: 'spicy', text: 'Tell me about a time you were completely distracted by how good I looked 👀🔥', intensity: 1 },
+  { id: '125', type: 'spicy', text: 'Describe the exact way you want me to greet you the next time we are alone behind closed doors 🚪🥵', intensity: 2 },
+  { id: '126', type: 'spicy', text: 'Send a voice note of you taking a deep breath and letting it out slowly... right near the mic 🎙️😮‍💨', intensity: 2 },
+  { id: '127', type: 'spicy', text: 'Tell me which part of my body you think about the most when we are apart 💭👅', intensity: 2 },
+  { id: '128', type: 'spicy', text: 'Run your hands through your hair slowly while maintaining intense eye contact 💆‍♂️🔥', timer: 20, intensity: 1 },
+  { id: '129', type: 'spicy', text: 'Describe your favorite memory of us being physically close in vivid detail 🧠🔥', intensity: 2 },
+  { id: '130', type: 'spicy', text: 'Tell me a fantasy you have that involves just the two of us and a locked hotel room 🏨🗝️', intensity: 2 },
+  { id: '131', type: 'spicy', text: 'Whisper your favorite spicy word in your sexiest tone 🤫', intensity: 1 },
+  { id: '132', type: 'spicy', text: 'What is one thing I wear that makes it impossible for you to focus? 👗👖🔥', intensity: 1 },
+  { id: '133', type: 'spicy', text: 'Bite your bottom lip and hold it for 10 seconds while staring at me 🫦', timer: 10, intensity: 1 },
+  { id: '134', type: 'spicy', text: 'Tell me exactly what goes through your mind when I lean in close to you 🧠💋', intensity: 1 },
+  { id: '135', type: 'spicy', text: 'Send a picture of your neck and collarbone right now 📸🔥', intensity: 2 },
+  { id: '136', type: 'spicy', text: 'Describe the temperature of the room using only suggestive adjectives 🌡️🥵', intensity: 1 },
 
   // LDR (137-148)
   { id: '137', type: 'ldr', vibe: 'fun', text: 'Open your map app and find the exact distance between us right now. Send the screenshot! 🗺️📏' },
@@ -232,14 +233,14 @@ export const CARDS: DareCard[] = [
   { id: '164', type: 'romantic', text: 'Share the exact wallpaper on your phone and explain why it reminds you of us.', timer: 45 },
 
   // --- NEW SPICY (165-172) ---
-  { id: '165', type: 'spicy', text: 'Describe exactly what you would do if we were stuck in a lift together during a power cut.', timer: 45 },
-  { id: '166', type: 'spicy', text: 'Send a voice note of you breathing softly while saying my name slowly.', timer: 20 },
-  { id: '167', type: 'spicy', text: 'Take off one piece of clothing slowly while maintaining eye contact.', timer: 30 },
-  { id: '168', type: 'spicy', text: 'Tell me the one place on my body you want to kiss right now and why.', timer: 45 },
-  { id: '169', type: 'spicy', text: 'Show me the sexiest pose you can do right now in your current outfit.', timer: 10 },
-  { id: '170', type: 'spicy', text: 'Whisper the hottest compliment you have about me into the microphone.', timer: 20 },
-  { id: '171', type: 'spicy', text: 'Rate how spicy our last kiss was on a scale of 1-10 and explain why.', timer: 45 },
-  { id: '172', type: 'spicy', text: 'Slowly run your fingers down your neck while staring at me for 15 seconds.', timer: 15 },
+  { id: '165', type: 'spicy', text: 'Describe exactly what you would do if we were stuck in a lift together during a power cut.', timer: 45, intensity: 1 },
+  { id: '166', type: 'spicy', text: 'Send a voice note of you breathing softly while saying my name slowly.', timer: 20, intensity: 2 },
+  { id: '167', type: 'spicy', text: 'Take off one piece of clothing slowly while maintaining eye contact.', timer: 30, intensity: 2 },
+  { id: '168', type: 'spicy', text: 'Tell me the one place on my body you want to kiss right now and why.', timer: 45, intensity: 2 },
+  { id: '169', type: 'spicy', text: 'Show me the sexiest pose you can do right now in your current outfit.', timer: 10, intensity: 1 },
+  { id: '170', type: 'spicy', text: 'Whisper the hottest compliment you have about me into the microphone.', timer: 20, intensity: 1 },
+  { id: '171', type: 'spicy', text: 'Rate how spicy our last kiss was on a scale of 1-10 and explain why.', timer: 45, intensity: 1 },
+  { id: '172', type: 'spicy', text: 'Slowly run your fingers down your neck while staring at me for 15 seconds.', timer: 15, intensity: 1 },
 
   // --- NEW LDR (173-180) ---
   { id: '173', type: 'ldr', vibe: 'fun', text: 'Order me my favorite food right now and send the order screenshot.', timer: 60 },
@@ -272,14 +273,14 @@ export const CARDS: DareCard[] = [
   { id: '196', type: 'romantic', text: 'Share your current phone lock screen and explain why it feels like us.' },
 
   // --- FRESH SPICY (197-204) ---
-  { id: '197', type: 'spicy', text: 'Describe exactly what you would do if we were alone in a parked car right now.', timer: 45 },
-  { id: '198', type: 'spicy', text: 'Send a voice note breathing slowly and saying my name in your deepest voice.', timer: 20 },
-  { id: '199', type: 'spicy', text: 'Slowly remove one item of clothing while keeping eye contact with the camera.', timer: 30 },
-  { id: '200', type: 'spicy', text: 'Tell me the one spot on your body you want me to kiss first next time we meet.', timer: 45 },
-  { id: '201', type: 'spicy', text: 'Strike your most seductive pose right now and hold it for 10 seconds.', timer: 10 },
-  { id: '202', type: 'spicy', text: 'Whisper the hottest compliment you have ever thought about me into the microphone.', timer: 20 },
-  { id: '203', type: 'spicy', text: 'Rate our last make-out session from 1 to 10 and explain every point.', timer: 45 },
-  { id: '204', type: 'spicy', text: 'Slowly trace your fingers along your collarbone while looking straight at me.', timer: 15 },
+  { id: '197', type: 'spicy', text: 'Describe exactly what you would do if we were alone in a parked car right now.', timer: 45, intensity: 2 },
+  { id: '198', type: 'spicy', text: 'Send a voice note breathing slowly and saying my name in your deepest voice.', timer: 20, intensity: 2 },
+  { id: '199', type: 'spicy', text: 'Slowly remove one item of clothing while keeping eye contact with the camera.', timer: 30, intensity: 2 },
+  { id: '200', type: 'spicy', text: 'Tell me the one spot on your body you want me to kiss first next time we meet.', timer: 45, intensity: 2 },
+  { id: '201', type: 'spicy', text: 'Strike your most seductive pose right now and hold it for 10 seconds.', timer: 10, intensity: 1 },
+  { id: '202', type: 'spicy', text: 'Whisper the hottest compliment you have ever thought about me into the microphone.', timer: 20, intensity: 1 },
+  { id: '203', type: 'spicy', text: 'Rate our last make-out session from 1 to 10 and explain every point.', timer: 45, intensity: 1 },
+  { id: '204', type: 'spicy', text: 'Slowly trace your fingers along your collarbone while looking straight at me.', timer: 15, intensity: 2 },
 
   // --- FRESH LDR (205-212) ---
   { id: '205', type: 'ldr', vibe: 'romantic', text: 'Order my favorite dessert right now and send me the confirmation screenshot.', timer: 60 },
@@ -289,7 +290,29 @@ export const CARDS: DareCard[] = [
   { id: '209', type: 'ldr', vibe: 'romantic', text: 'Show me the current song on your playlist and tell me why it reminds you of me.' },
   { id: '210', type: 'ldr', vibe: 'fun', text: 'Send a picture of the sky outside your window right now so we can look at the same clouds.' },
   { id: '211', type: 'ldr', vibe: 'fun', text: 'Change your profile picture to something that only I would understand.' },
-  { id: '212', type: 'ldr', vibe: 'romantic', text: 'Do a pretend hug by wrapping your arms around yourself and saying my name out loud.' }
+  { id: '212', type: 'ldr', vibe: 'romantic', text: 'Do a pretend hug by wrapping your arms around yourself and saying my name out loud.' },
+
+  // --- SPICY · EXTREME (Level 3) — for consenting adult partners. Suggestive, not explicit. ---
+  { id: '213', type: 'spicy', intensity: 3, text: 'Slowly take off one more piece of clothing than you did last round, keeping your eyes on me.', timer: 20 },
+  { id: '214', type: 'spicy', intensity: 3, text: 'Guide my hand to exactly where you want it and hold it there.' },
+  { id: '215', type: 'spicy', intensity: 3, text: 'Whisper what you want to happen next tonight, in full detail, into my ear.', timer: 30 },
+  { id: '216', type: 'spicy', intensity: 3, text: 'Kiss your way from my lips down to my collarbone, taking your time.', timer: 30 },
+  { id: '217', type: 'spicy', intensity: 3, text: 'Pin my wrists gently and kiss me however you like for 20 seconds.', timer: 20 },
+  { id: '218', type: 'spicy', intensity: 3, text: 'Set a 2-minute timer and tease me without letting me touch you back — see who breaks first.', timer: 120 },
+  { id: '219', type: 'spicy', intensity: 3, text: 'Describe your favorite thing we have ever done together in bed, in vivid detail.' },
+  { id: '220', type: 'spicy', intensity: 3, text: 'Climb into my lap and set the pace of the next kiss yourself.' },
+  { id: '221', type: 'spicy', intensity: 3, text: 'Tell me one fantasy you have never said out loud, then start acting out the very beginning of it.' },
+  { id: '222', type: 'spicy', intensity: 3, text: 'Give me full control for the next three minutes and simply follow my lead.', timer: 180 },
+  { id: '223', type: 'spicy', intensity: 3, text: 'Run your hands slowly over me and tell me every place you plan to kiss next.' },
+  { id: '224', type: 'spicy', intensity: 3, text: 'Turn off the lights, put the phone down, and pick up exactly where this card leaves off.' },
+
+  // --- LDR · SPICY EXTREME — for consenting adult partners apart tonight. Suggestive, not explicit. ---
+  { id: '225', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Get on video and slowly take off one layer while I watch.', timer: 30 },
+  { id: '226', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Send a voice note describing, step by step, exactly what you would do if I walked in right now.', timer: 30 },
+  { id: '227', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Tell me over the call what you are imagining at this exact moment.' },
+  { id: '228', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Send a photo as daring as you are comfortable with — you choose exactly how much.' },
+  { id: '229', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Stay on the call and describe our reunion night together from the first kiss onward.' },
+  { id: '230', type: 'ldr', vibe: 'spicy', intensity: 3, text: 'Whisper the one thing you miss most about being physically close to me, and what you would do first.', timer: 20 }
 ];
 
 // Helper to get 5 free initial cards for first-time users (mix of fun + romantic)

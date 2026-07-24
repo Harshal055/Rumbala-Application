@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown, FadeInRight } from 'react-native-reanimated';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
-import { glassStyles, glassTokens } from '../../src/constants/glass';
+import { glassStyles, glassTokens, brandGradient } from '../../src/constants/glass';
 
 import { useStore } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -40,7 +40,7 @@ export default function ChatsScreen() {
                     onPress={() => router.push('/(tabs)/daily')}
                 >
                     <LinearGradient
-                        colors={['#FF6B35', '#FF1493']}
+                        colors={brandGradient}
                         style={StyleSheet.absoluteFill}
                         start={{ x: 0, y: 0 }}
                         end={{ x: 1, y: 1 }}
@@ -78,7 +78,7 @@ export default function ChatsScreen() {
                     onPress={() => router.push(`/chat/${roomId}?name=${encodeURIComponent(partnerName)}`)}
                 >
                     <View style={styles.avatarContainer}>
-                        <LinearGradient colors={['#FF6B35', '#FF1493']} style={styles.avatarGradient}>
+                        <LinearGradient colors={brandGradient} style={styles.avatarGradient}>
                             <Text style={styles.avatarInitial}>{partnerName[0]}</Text>
                         </LinearGradient>
                         <View style={styles.onlineDot} />

@@ -91,10 +91,13 @@ export default function AdminScreen() {
             const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
             if (error) throw error;
             
-            // Check if user is actually an admin by testing a protected endpoint
-            const { count, error: countError } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
+            // Query admin_roles — only admins have a row here (RLS: auth.uid() = user_id)
+            // A regular user gets count=0 and is rejected. Admin gets count=1 and proceeds.
+            const { count, error: countError } = await supabase
+                .from('admin_roles')
+                .select('*', { count: 'exact', head: true });
             
-            if (countError || count === null) {
+            if (countError || !count || count < 1) {
                 await supabase.auth.signOut();
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
                 alert('You are not authorized as an admin.');

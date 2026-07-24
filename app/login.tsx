@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar, Image,
-    Dimensions
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -10,15 +9,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useStore } from '../src/store/useStore';
 import { loginV2, setTokens } from '../src/services/api';
-import { initNotifications } from '../src/services/notificationService';
-import { initRevenueCat, getCustomerInfo, checkProEntitlement } from '../src/services/revenueCatService';
 import { supabase } from '../src/services/supabase';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AnimatedBackground from '../src/components/AnimatedBackground';
-import { glassStyles, glassTokens } from '../src/constants/glass';
-
-const { width } = Dimensions.get('window');
+import { glassStyles } from '../src/constants/glass';
 
 const BG_COLORS = ['#F5FAF9', '#E0F2F1', '#B2DFDB'];
 

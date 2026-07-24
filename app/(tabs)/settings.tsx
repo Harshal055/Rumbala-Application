@@ -109,6 +109,14 @@ export default function SettingsScreen() {
     const [showBugModal, setShowBugModal] = useState(false);
     const [bugMessage, setBugMessage] = useState('');
     const [loadingBug, setLoadingBug] = useState(false);
+    const [isRestoring, setIsRestoring] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
+
+    useEffect(() => {
+        supabase.from('admin_roles').select('*', { count: 'exact', head: true }).then(({ count }) => {
+            setIsAdmin(!!count && count > 0);
+        });
+    }, []);
     const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryRecord[]>([]);
     const [loadingPurchaseHistory, setLoadingPurchaseHistory] = useState(false);
 
@@ -360,7 +368,7 @@ export default function SettingsScreen() {
                                 </View>
                             </View>
 
-                            {userEmail?.toLowerCase() === 'adminhr@andx.com' && (
+                            {isAdmin && (
                                 <>
                                     <View style={styles.rowDivider} />
                                     <TouchableOpacity 
