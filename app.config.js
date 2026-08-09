@@ -2,7 +2,7 @@
 export default {
   name: "Rumbala",
   slug: "rumbal",
-  version: "1.0.3", // incremented for Play Console
+  version: "1.0.6", // incremented for Play Console
   scheme: "rumbala",
   orientation: "portrait",
   userInterfaceStyle: "light",
@@ -31,7 +31,7 @@ export default {
     predictiveBackGestureEnabled: false,
     package: "com.andx.rumbala",
     icon: "./assets/icon.png",
-    versionCode: 4, // incremented for Play Console
+    versionCode: 9,
     googleServicesFile: "./google-services.json",
     adaptiveIcon: {
       foregroundImage: "./assets/icon.png",

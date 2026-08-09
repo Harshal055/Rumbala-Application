@@ -39,7 +39,18 @@ const REVENUECAT_API_KEY_WEB =
 export const ENTITLEMENT_PRO = 'Pro';
 export const ENTITLEMENT_CARDS = 'dare_cards';
 
-// ─── Mock Data for Development ────────────────────────────────
+// Unified RevenueCat Product & Identifier Helpers (Native & Web)
+export const rcProduct = (pkg: any) =>
+    pkg?.rcBillingProduct ?? pkg?.storeProduct ?? pkg?.product ?? (typeof pkg === 'object' && (pkg?.priceString || pkg?.currentPrice) ? pkg : {});
+
+export const rcProductId = (pkg: any): string => {
+    if (!pkg) return '';
+    if (typeof pkg === 'string') return pkg;
+    const prod = rcProduct(pkg);
+    return prod?.identifier ?? pkg?.storeProduct?.identifier ?? pkg?.product?.identifier ?? pkg?.identifier ?? '';
+};
+
+// ─── Mock Data for Development & Offline Fallback ───────────────
 const MOCK_OFFERING = {
     current: {
         availablePackages: [
@@ -51,9 +62,9 @@ const MOCK_OFFERING = {
                     identifier: 'monthly',
                     description: 'Full access to all features monthly',
                     title: 'Monthly Premium',
-                    price: 9.99,
-                    priceString: '$9.99',
-                    currencyCode: 'USD',
+                    price: 99,
+                    priceString: '₹99',
+                    currencyCode: 'INR',
                     introPrice: null,
                 }
             },
@@ -65,9 +76,9 @@ const MOCK_OFFERING = {
                     identifier: 'annual',
                     description: 'Full access to all features annually',
                     title: 'Annual Premium',
-                    price: 59.99,
-                    priceString: '$59.99',
-                    currencyCode: 'USD',
+                    price: 999,
+                    priceString: '₹999',
+                    currencyCode: 'INR',
                     introPrice: {
                         price: 0,
                         priceString: 'Free',
@@ -86,9 +97,9 @@ const MOCK_OFFERING = {
                     identifier: 'dare_card_5',
                     description: 'Get 5 more dares to spice up the night',
                     title: '5 Dare Cards',
-                    price: 1.99,
-                    priceString: '$1.99',
-                    currencyCode: 'USD',
+                    price: 79,
+                    priceString: '₹79',
+                    currencyCode: 'INR',
                 }
             },
             {
@@ -99,9 +110,9 @@ const MOCK_OFFERING = {
                     identifier: 'dare_card_10',
                     description: 'Unlock 10 dares and save 20%',
                     title: '10 Dare Cards',
-                    price: 3.99,
-                    priceString: '$3.99',
-                    currencyCode: 'USD',
+                    price: 139,
+                    priceString: '₹139',
+                    currencyCode: 'INR',
                 }
             },
             {
@@ -112,9 +123,9 @@ const MOCK_OFFERING = {
                     identifier: 'dare_card_25',
                     description: 'The ultimate card hoard for true lovers',
                     title: '25 Dare Cards',
-                    price: 7.99,
-                    priceString: '$7.99',
-                    currencyCode: 'USD',
+                    price: 279,
+                    priceString: '₹279',
+                    currencyCode: 'INR',
                 }
             }
         ]
@@ -123,12 +134,28 @@ const MOCK_OFFERING = {
 
 // Product Mapping for Consumables
 const PRODUCT_CARD_MAP: Record<string, number> = {
-    consumable: 5, // Fallback for Test Store
+    consumable: 5,
+    custom: 5,
     dare_card_1: 1,
     dare_card_5: 5,
     dare_card_10: 10,
     dare_card_25: 25,
+    '5_pack': 5,
+    '10_pack': 10,
+    '25_pack': 25,
+    'single': 1,
 };
+
+export function getCardsForProduct(productId: string): number {
+    if (!productId) return 0;
+    const lower = productId.toLowerCase();
+    if (PRODUCT_CARD_MAP[lower] !== undefined) return PRODUCT_CARD_MAP[lower];
+    if (lower.includes('card_25') || lower.includes('25_pack') || lower.includes('25pack') || lower.includes('25_cards') || lower.includes('25pack')) return 25;
+    if (lower.includes('card_10') || lower.includes('10_pack') || lower.includes('10pack') || lower.includes('10_cards') || lower.includes('10pack')) return 10;
+    if (lower.includes('card_5') || lower.includes('5_pack') || lower.includes('5pack') || lower.includes('5_cards') || lower.includes('consumable') || lower === 'custom') return 5;
+    if (lower.includes('card_1') || lower.includes('1_pack') || lower.includes('1pack') || lower.includes('single')) return 1;
+    return 0;
+}
 
 let isInitialized = false;
 let rcInstance: any = null; // Holds the active instance (Web or Native)
@@ -206,38 +233,51 @@ export async function getOfferings(): Promise<any | null> {
 
         if (Platform.OS === 'web') {
             const offerings = await rcInstance.getOfferings();
-            if (__DEV__) console.log('🌐 RC WEB: Offerings loaded:', offerings?.current?.availablePackages?.length || 0);
-            return offerings || null;
+            if (offerings?.current?.availablePackages && offerings.current.availablePackages.length > 0) {
+                return offerings;
+            }
+            return MOCK_OFFERING;
         } else {
             const offerings = await rcInstance.getOfferings();
             
-            if (offerings?.current?.availablePackages) {
-                console.log('📱 RC NATIVE: CURRENT OFFERING PACKAGES:');
-                offerings.current.availablePackages.forEach((pkg: any) => {
-                    if (__DEV__) console.log(`   - ID: ${pkg.identifier} | ProductID: ${pkg.product.identifier} | Price: ${pkg.product.priceString}`);
+            if (offerings?.current?.availablePackages && offerings.current.availablePackages.length > 0) {
+                if (__DEV__) {
+                    console.log('📱 RC NATIVE: CURRENT OFFERING PACKAGES:');
+                    offerings.current.availablePackages.forEach((pkg: any) => {
+                        console.log(`   - ID: ${pkg.identifier} | ProductID: ${rcProductId(pkg)} | Price: ${rcProduct(pkg)?.priceString}`);
+                    });
+                }
+
+                // Check if we have consumable dare pack packages in the active offering
+                const hasConsumables = offerings.current.availablePackages.some((pkg: any) => {
+                    const id = rcProductId(pkg).toLowerCase();
+                    const pkgId = (pkg?.identifier || '').toLowerCase();
+                    const type = (pkg?.packageType || '').toUpperCase();
+                    return type === 'CUSTOM' || type === 'UNKNOWN' || pkgId === 'custom' || /(card_|pack|consumable)/i.test(id) || /(card_|pack|consumable)/i.test(pkgId);
                 });
-            } else {
-                console.warn('⚠️ RC NATIVE: No current offering found.');
+
+                if (!hasConsumables) {
+                    // If Google Play hasn't propagated consumable in-app products to device cache yet,
+                    // seamlessly merge the fallback dare packs so the shop tab is never empty
+                    const mockConsumables = MOCK_OFFERING.current.availablePackages.filter((p: any) => p.packageType === 'CUSTOM');
+                    return {
+                        ...offerings,
+                        current: {
+                            ...offerings.current,
+                            availablePackages: [...offerings.current.availablePackages, ...mockConsumables]
+                        }
+                    };
+                }
+
+                return offerings;
             }
 
-            // If the offering is valid but empty, it might still throw or return empty
-            if (!offerings?.current || offerings.current.availablePackages.length === 0) {
-                console.warn('⚠️ No packages in current offering, checking for mock fallback...');
-                if (__DEV__) return MOCK_OFFERING;
-            }
-
-            return offerings || null;
-        }
-    } catch (error: any) {
-        console.error('❌ Failed to load offerings:', error.message);
-        console.error('🔍 Error Details:', JSON.stringify(error, null, 2));
-        
-        // Fallback to mock in development if configuration error occurs
-        if (__DEV__) {
-            if (__DEV__) console.log('🛠️ Using MOCK_OFFERING for development testing');
+            // If empty or null from store, return standard offerings fallback
             return MOCK_OFFERING;
         }
-        return null;
+    } catch (error: any) {
+        console.error('❌ Failed to load offerings:', error?.message || error);
+        return MOCK_OFFERING;
     }
 }
 
@@ -249,22 +289,39 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
             await initRevenueCat(useStore.getState().userId || undefined);
         }
 
-        // 🛠️ Mock Purchase Safety (Development Only)
-        // If the package is from our mock data, don't call the native SDK
-        if (__DEV__ && (pkg?.identifier === 'monthly' || pkg?.identifier === 'annual' || pkg?.isMock)) {
-            if (__DEV__) console.log('🛠️ Simulating successful MOCK purchase...');
-            // Simulate a delay
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            const productId = typeof pkg === 'string' ? pkg : (pkg?.product?.identifier || 'mock_pro');
-            const cardsAdded = PRODUCT_CARD_MAP[productId] || 0;
-            if (cardsAdded > 0) handleConsumableSuccess(cardsAdded, productId, pkg);
-            else await appendPurchaseHistory(pkg, { productId, type: 'subscription' });
-            
-            return { success: true, cardsAdded: cardsAdded > 0 ? cardsAdded : undefined };
+        const prod = rcProduct(pkg);
+        const productId = typeof pkg === 'string' ? pkg : (prod?.identifier || pkg?.identifier || '');
+        const pkgIdentifier = typeof pkg === 'string' ? pkg : (pkg?.identifier || '');
+
+        let cardsAdded = getCardsForProduct(productId);
+        if (cardsAdded === 0 && pkgIdentifier) {
+            cardsAdded = getCardsForProduct(pkgIdentifier);
         }
 
-        if (__DEV__) console.log(`🛒 Purchasing ${typeof pkg === 'string' ? pkg : pkg?.identifier || 'package'}...`);
+        // 🛠️ Mock / Offline Fallback Purchase Handling
+        if (pkg?.isMock || (__DEV__ && (pkgIdentifier === 'monthly' || pkgIdentifier === 'annual'))) {
+            // 🔒 SAFETY: never complete a fake purchase in a production build.
+            // Mock packages are only served when the real store offerings fail to
+            // load. Granting cards / Pro from them in production would give paid
+            // goods away for free, so refuse and ask the user to retry.
+            if (pkg?.isMock && !__DEV__) {
+                return {
+                    success: false,
+                    error: 'The store is still getting ready. Please try again in a moment.',
+                };
+            }
+            if (__DEV__) console.log('🛠️ Handling mock package purchase...', { productId, pkgIdentifier, cardsAdded });
+            await new Promise(resolve => setTimeout(resolve, 800));
+            if (cardsAdded > 0) {
+                handleConsumableSuccess(cardsAdded, productId || pkgIdentifier, pkg);
+                return { success: true, cardsAdded };
+            } else {
+                await appendPurchaseHistory(pkg, { productId: productId || pkgIdentifier, type: 'subscription' });
+                return { success: true };
+            }
+        }
+
+        if (__DEV__) console.log(`🛒 Purchasing ${productId || pkgIdentifier}...`, { pkg });
 
         let customerInfo;
         if (Platform.OS === 'web') {
@@ -273,33 +330,43 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
                 : await rcInstance.purchasePackage(pkg);
         } else {
             // Native Purchase (Google Play / App Store)
-            if (typeof pkg === 'string') {
-                const result = await NativePurchases.purchaseProduct(pkg);
-                customerInfo = result.customerInfo;
-            } else {
+            if (typeof pkg === 'object' && pkg?.identifier && (pkg?.product || pkg?.storeProduct)) {
                 const result = await NativePurchases.purchasePackage(pkg);
+                customerInfo = result.customerInfo;
+            } else if (typeof pkg === 'object' && (pkg?.storeProduct || pkg?.product)) {
+                const storeProd = pkg.storeProduct || pkg.product;
+                if (NativePurchases.purchaseStoreProduct) {
+                    const result = await NativePurchases.purchaseStoreProduct(storeProd);
+                    customerInfo = result.customerInfo;
+                } else {
+                    const result = await NativePurchases.purchaseProduct(storeProd.identifier);
+                    customerInfo = result.customerInfo;
+                }
+            } else {
+                const targetId = productId || (typeof pkg === 'string' ? pkg : '');
+                const result = await NativePurchases.purchaseProduct(targetId);
                 customerInfo = result.customerInfo;
             }
         }
 
-        // Check if it was a dare card consumable
-        const productId = typeof pkg === 'string' 
-            ? pkg 
-            : (Platform.OS === 'web' ? pkg.rcBillingProduct.identifier : pkg.product.identifier);
-            
-        const cardsAdded = PRODUCT_CARD_MAP[productId] || 0;
-
+        // If it was a dare card consumable, always grant the cards upon successful store transaction!
         if (cardsAdded > 0) {
-            handleConsumableSuccess(cardsAdded, productId, pkg);
+            handleConsumableSuccess(cardsAdded, productId || pkgIdentifier || 'dare_card', pkg);
             return { success: true, cardsAdded };
         }
 
         // Must be a subscription (Rumbala Pro)
-        const hasPro = checkProEntitlement(customerInfo);
-        if (hasPro) {
+        const proDetails = getProEntitlementDetails(customerInfo);
+        if (proDetails.isPro) {
             await appendPurchaseHistory(pkg, { productId, type: 'subscription' });
+            const store = useStore.getState();
+            store.setIsPro(true, proDetails.expiresAt);
+            if (store.userId) {
+                const api = await import('./api');
+                api.syncProStatusToBackend(store.userId, true, proDetails.expiresAt).catch((e: any) => console.warn('Pro backend sync error:', e));
+            }
         }
-        return { success: !!hasPro };
+        return { success: proDetails.isPro };
     } catch (error: any) {
         if (error.userCancelled) {
             if (__DEV__) console.log('🚫 Purchase cancelled by user');
@@ -310,17 +377,32 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
     }
 }
 
+// ─── Get Pro Entitlement Details (Status + Expiration) ─────────
+export function getProEntitlementDetails(customerInfo: any): { isPro: boolean; expiresAt: string | null; productIdentifier?: string } {
+    if (!customerInfo || !customerInfo.entitlements || !customerInfo.entitlements.active) {
+        return { isPro: false, expiresAt: null };
+    }
+
+    const activeEntitlements = customerInfo.entitlements.active;
+    const ent = activeEntitlements[ENTITLEMENT_PRO] || 
+                activeEntitlements['Rumbala Pro'] || 
+                activeEntitlements['Pro'] || 
+                activeEntitlements['pro'] || 
+                activeEntitlements['premium'];
+
+    if (ent) {
+        return {
+            isPro: true,
+            expiresAt: ent.expirationDate || null,
+            productIdentifier: ent.productIdentifier || ent.identifier,
+        };
+    }
+    return { isPro: false, expiresAt: null };
+}
+
 // ─── Check Pro Entitlement ─────────────────────────────────────
 export function checkProEntitlement(customerInfo: any): boolean {
-    if (!customerInfo || !customerInfo.entitlements || !customerInfo.entitlements.active) return false;
-
-    // Support common entitlement naming variants to avoid false negatives.
-    const activeEntitlements = customerInfo.entitlements.active;
-    return (
-        activeEntitlements[ENTITLEMENT_PRO] !== undefined ||
-        activeEntitlements['Rumbala Pro'] !== undefined ||
-        activeEntitlements['Pro'] !== undefined
-    );
+    return getProEntitlementDetails(customerInfo).isPro;
 }
 
 // ─── Restore Purchases ─────────────────────────────────────────

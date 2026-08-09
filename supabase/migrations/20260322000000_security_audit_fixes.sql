@@ -29,7 +29,7 @@ DECLARE
   v_profile public.profiles;
 BEGIN
   -- BOLA Fix: Ensure user can only add cards to themselves (or rely on admin/service_role)
-  IF auth.uid() IS NOT NULL AND auth.uid() != p_user_id AND NOT public.is_admin() THEN
+  IF auth.uid() IS NULL OR (auth.uid() != p_user_id AND NOT public.is_admin()) THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 
@@ -64,7 +64,7 @@ DECLARE
   v_days_since_claim numeric;
 BEGIN
   -- BOLA Fix: Ensure user can only claim for themselves
-  IF auth.uid() IS NOT NULL AND auth.uid() != p_user_id AND NOT public.is_admin() THEN
+  IF auth.uid() IS NULL OR (auth.uid() != p_user_id AND NOT public.is_admin()) THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 

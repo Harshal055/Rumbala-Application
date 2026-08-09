@@ -150,17 +150,31 @@ export default function ChatsScreen() {
 
                 {/* Header */}
                 <Animated.View entering={FadeInDown.duration(500)} style={[styles.header, glassStyles.header]}>
-                    <TouchableOpacity style={[styles.menuBtn, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-                        <Ionicons name="menu-outline" size={24} color="#FF6B35" />
+                    <TouchableOpacity
+                        style={[styles.menuBtn, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}
+                        onPress={() => {
+                            if (router.canGoBack()) router.back();
+                            else router.replace('/(tabs)');
+                        }}
+                    >
+                        <Ionicons name="arrow-back" size={22} color="#FF6B35" />
                     </TouchableOpacity>
                     <Text style={[styles.headerTitle, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
                     <View style={styles.headerActions}>
-                        <TouchableOpacity style={[styles.headerIconBtn, glassStyles.container]}>
+                        <TouchableOpacity
+                            style={[styles.headerIconBtn, glassStyles.container]}
+                            onPress={() => router.push('/(tabs)/settings')}
+                        >
                             <Ionicons name="notifications-outline" size={20} color="#5F6F81" />
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.headerIconBtn}>
+                        <TouchableOpacity
+                            style={styles.headerIconBtn}
+                            onPress={() => router.push('/(tabs)/pro')}
+                        >
                             <View style={styles.avatarMini}>
-                                <Image source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=100' }} style={styles.avatarMiniImg} />
+                                <Text style={{ fontSize: 16, fontWeight: '800', color: '#FF6B35' }}>
+                                    {(partner1 || 'P')[0]?.toUpperCase()}
+                                </Text>
                             </View>
                         </TouchableOpacity>
                     </View>

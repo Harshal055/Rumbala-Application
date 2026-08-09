@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
     TextInput, FlatList, StatusBar, ActivityIndicator,
-    Modal, Alert, Image, useWindowDimensions
+    Modal, Alert, Image, useWindowDimensions,
+    KeyboardAvoidingView, Platform, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +14,7 @@ import {
     getFeedbacks, getAdminStats, adminSearchUsers, adminUpdateUserCards,
     adminGrantPro, adminGetRevenueStats, adminGetGameplayStats,
     adminGetActiveRooms, adminCloseRoom, adminGetCards, adminUpsertCard,
-    adminDeleteCard, adminGetBugReports
+    adminDeleteCard, adminGetBugReports, checkProStatus
 } from '../src/services/api';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
@@ -149,13 +150,34 @@ export default function AdminScreen() {
         finally { setLoading(false); }
     };
 
-    const handleGrantPro = async (status: boolean) => {
+    const handleGrantTimedPro = async (durationDays: number | null) => {
+        if (!selectedUser) return;
         try {
-            await adminGrantPro(selectedUser.id, status);
-            setSelectedUser({ ...selectedUser, is_pro: status });
-            Alert.alert('Success', `Pro status ${status ? 'granted' : 'revoked'}`);
+            let expiresAt: string | null = null;
+            if (durationDays !== null) {
+                const exp = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+                expiresAt = exp.toISOString();
+            }
+            await adminGrantPro(selectedUser.id, true, expiresAt);
+            setSelectedUser({ ...selectedUser, is_pro: true, pro_expires_at: expiresAt });
+            const label = durationDays === 1 ? '1 Day (24 Hours)' : durationDays ? `${durationDays} Days` : 'Lifetime / Permanent';
+            Alert.alert('🎉 Pro Granted', `Successfully granted ${label} Pro membership!`);
             handleUserSearch();
-        } catch (e) { Alert.alert('Error', 'Failed to update Pro status'); }
+        } catch (e) {
+            Alert.alert('Error', 'Failed to grant Pro status');
+        }
+    };
+
+    const handleRevokePro = async () => {
+        if (!selectedUser) return;
+        try {
+            await adminGrantPro(selectedUser.id, false, null);
+            setSelectedUser({ ...selectedUser, is_pro: false, pro_expires_at: null });
+            Alert.alert('Revoked', 'Pro membership has been revoked.');
+            handleUserSearch();
+        } catch (e) {
+            Alert.alert('Error', 'Failed to revoke Pro status');
+        }
     };
 
     const handleSaveUser = async () => {
@@ -243,19 +265,30 @@ export default function AdminScreen() {
                 </TouchableOpacity>
             </View>
             {loading ? <ActivityIndicator color="#FF6B35" style={{ marginTop: 20 }} /> : (
-                users.map(u => (
-                    <TouchableOpacity key={u.id} style={[styles.userCard, glassStyles.container]} onPress={() => { setSelectedUser(u); setShowUserModal(true); }}>
-                        <View style={styles.userHead}>
-                            <Text style={styles.userName}>{u.display_name || 'Guest User'}</Text>
-                            {u.is_pro && <View style={styles.proBadgeMini}><Text style={styles.proTextMini}>PRO</Text></View>}
-                        </View>
-                        <Text style={styles.userEmail}>{u.email}</Text>
-                        <View style={styles.userFooter}>
-                            <Text style={styles.userStat}><Ionicons name="card" size={12} /> {u.card_count}</Text>
-                            <Text style={styles.userStat}><Ionicons name="calendar" size={12} /> {new Date(u.created_at).toLocaleDateString()}</Text>
-                        </View>
-                    </TouchableOpacity>
-                ))
+                users.map(u => {
+                    const proInfo = checkProStatus(u.is_pro, u.pro_expires_at);
+                    return (
+                        <TouchableOpacity key={u.id} style={[styles.userCard, glassStyles.container]} onPress={() => { setSelectedUser(u); setShowUserModal(true); }}>
+                            <View style={styles.userHead}>
+                                <Text style={styles.userName}>{u.display_name || 'Guest User'}</Text>
+                                {proInfo.isActive ? (
+                                    <View style={[styles.proBadgeMini, { backgroundColor: u.pro_expires_at ? '#8B5CF6' : '#FF6B35' }]}>
+                                        <Text style={styles.proTextMini}>👑 {proInfo.formattedExpiry || 'PRO'}</Text>
+                                    </View>
+                                ) : proInfo.isExpired ? (
+                                    <View style={[styles.proBadgeMini, { backgroundColor: '#64748B' }]}>
+                                        <Text style={styles.proTextMini}>EXPIRED</Text>
+                                    </View>
+                                ) : null}
+                            </View>
+                            <Text style={styles.userEmail}>{u.email}</Text>
+                            <View style={styles.userFooter}>
+                                <Text style={styles.userStat}><Ionicons name="card" size={12} /> {u.card_count} cards</Text>
+                                <Text style={styles.userStat}><Ionicons name="calendar" size={12} /> {new Date(u.created_at).toLocaleDateString()}</Text>
+                            </View>
+                        </TouchableOpacity>
+                    );
+                })
             )}
         </View>
     );
@@ -369,16 +402,25 @@ export default function AdminScreen() {
                     <Text style={styles.bugUser}>{b.user_email || 'Anonymous'}</Text>
                 </View>
             ))}
-            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>User Feedback</Text>
-            {feedbacks.map(f => (
-                <View key={f.id} style={[styles.fbDetailCard, glassStyles.container]}>
-                    <View style={styles.fbHead}>
-                        <Text style={styles.fbEmailText}>{f.user_email}</Text>
-                        <Text style={styles.fbRatingText}>⭐ {f.rating}/5</Text>
+            <Text style={[styles.sectionTitle, { marginTop: 20 }]}>User Feedback ({feedbacks.length})</Text>
+            {feedbacks.length === 0 ? (
+                <Text style={{ color: '#888', fontStyle: 'italic', marginVertical: 8 }}>No feedback submitted yet.</Text>
+            ) : (
+                feedbacks.map(f => (
+                    <View key={f.id} style={[styles.fbDetailCard, glassStyles.container]}>
+                        <View style={styles.fbHead}>
+                            <Text style={styles.fbEmailText}>{f.user_email || 'Anonymous'}</Text>
+                            <Text style={styles.fbRatingText}>⭐ {f.rating || 5}/5</Text>
+                        </View>
+                        <Text style={styles.fbMsgText}>{f.message}</Text>
+                        {f.created_at && (
+                            <Text style={{ fontSize: 10, color: '#888', marginTop: 4 }}>
+                                {new Date(f.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                            </Text>
+                        )}
                     </View>
-                    <Text style={styles.fbMsgText}>{f.message}</Text>
-                </View>
-            ))}
+                ))
+            )}
         </View>
     );
 
@@ -388,19 +430,23 @@ export default function AdminScreen() {
         return (
             <AnimatedBackground colors={['#0F172A', '#1E293B', '#334155']}>
                 <SafeAreaView style={styles.loginContainer}>
-                    <Animated.View entering={FadeInDown.duration(600)} style={[styles.loginCard, glassStyles.container]}>
-                        <View style={styles.loginIconWrap}><Ionicons name="shield-checkmark" size={40} color="#FF6B35" /></View>
-                        <Text style={styles.loginTitle}>Admin Portal</Text>
-                        <View style={styles.inputGroup}>
-                            <TextInput style={[styles.input, glassStyles.container]} value={email} onChangeText={setEmail} placeholder="Admin Email" placeholderTextColor="#64748B" autoCapitalize="none" />
-                        </View>
-                        <View style={styles.inputGroup}>
-                            <TextInput style={[styles.input, glassStyles.container]} value={password} onChangeText={setPassword} placeholder="••••••" placeholderTextColor="#64748B" secureTextEntry />
-                        </View>
-                        <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
-                            <LinearGradient colors={['#FF6B35', '#F5511E']} style={styles.loginGradient}><Text style={styles.loginBtnText}>Unlock Dashboard</Text></LinearGradient>
-                        </TouchableOpacity>
-                    </Animated.View>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center' }}>
+                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                            <Animated.View entering={FadeInDown.duration(600)} style={[styles.loginCard, glassStyles.container]}>
+                                <View style={styles.loginIconWrap}><Ionicons name="shield-checkmark" size={40} color="#FF6B35" /></View>
+                                <Text style={styles.loginTitle}>Admin Portal</Text>
+                                <View style={styles.inputGroup}>
+                                    <TextInput style={[styles.input, glassStyles.container]} value={email} onChangeText={setEmail} placeholder="Admin Email" placeholderTextColor="#64748B" autoCapitalize="none" keyboardType="email-address" />
+                                </View>
+                                <View style={styles.inputGroup}>
+                                    <TextInput style={[styles.input, glassStyles.container]} value={password} onChangeText={setPassword} placeholder="••••••" placeholderTextColor="#64748B" secureTextEntry />
+                                </View>
+                                <TouchableOpacity style={styles.loginBtn} onPress={handleLogin}>
+                                    <LinearGradient colors={['#FF6B35', '#F5511E']} style={styles.loginGradient}><Text style={styles.loginBtnText}>Unlock Dashboard</Text></LinearGradient>
+                                </TouchableOpacity>
+                            </Animated.View>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
                 </SafeAreaView>
             </AnimatedBackground>
         );
@@ -416,7 +462,17 @@ export default function AdminScreen() {
             <SafeAreaView style={styles.container}>
                 <StatusBar barStyle="dark-content" />
                 <View style={[styles.header, glassStyles.header]}>
-                    <TouchableOpacity onPress={() => router.back()} style={styles.headerBackBtn}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            if (router.canGoBack()) {
+                                router.back();
+                            } else {
+                                router.replace('/(tabs)/settings');
+                            }
+                        }}
+                        style={styles.headerBackBtn}
+                    >
                         <Ionicons name="arrow-back" size={22} color="#1E293B" />
                     </TouchableOpacity>
                     <View style={{ flex: 1 }}>
@@ -438,7 +494,11 @@ export default function AdminScreen() {
                     ))}
                 </ScrollView>
 
-                <ScrollView style={styles.contentArea} contentContainerStyle={styles.scrollContent}>
+                <ScrollView 
+                    style={styles.contentArea} 
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                >
                     {loading && <ActivityIndicator color="#FF6B35" style={{ marginVertical: 20 }} />}
                     {activeTab === 'Overview' && renderOverview()}
                     {activeTab === 'Users' && renderUsers()}
@@ -457,22 +517,64 @@ export default function AdminScreen() {
                     hardwareAccelerated={true}
                     statusBarTranslucent={true}
                 >
-                    <View style={styles.modalOverlay}>
-                        <View style={[styles.modalContent, glassStyles.container]}>
-                            <Text style={styles.modalTitle}>Manage User</Text>
-                            {selectedUser && (
-                                <>
-                                    <Text style={styles.modalLabel}>Email: {selectedUser.email}</Text>
-                                    <TextInput style={[styles.modalInput, glassStyles.container]} defaultValue={String(selectedUser.card_count)} keyboardType="numeric" onChangeText={(v) => setSelectedUser({ ...selectedUser, card_count: parseInt(v) })} />
-                                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: selectedUser.is_pro ? '#EF4444' : '#6366F1' }]} onPress={() => handleGrantPro(!selectedUser.is_pro)}>
-                                        <Text style={styles.actionBtnText}>{selectedUser.is_pro ? 'Revoke PRO' : 'Grant PRO'}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.saveActionBtn} onPress={handleSaveUser}><Text style={styles.saveActionText}>Save Changes</Text></TouchableOpacity>
-                                </>
-                            )}
-                            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowUserModal(false)}><Text style={styles.closeModalText}>Cancel</Text></TouchableOpacity>
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <View style={styles.modalOverlay}>
+                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
+                                <View style={[styles.modalContent, glassStyles.container]}>
+                                    <Text style={styles.modalTitle}>Manage User</Text>
+                                    {selectedUser && (() => {
+                                        const proInfo = checkProStatus(selectedUser.is_pro, selectedUser.pro_expires_at);
+                                        return (
+                                            <>
+                                                <Text style={styles.modalLabel}>Email: {selectedUser.email}</Text>
+                                                
+                                                <View style={[styles.proInfoBanner, { borderColor: proInfo.isActive ? (selectedUser.pro_expires_at ? '#8B5CF6' : '#FF6B35') : 'rgba(0,0,0,0.06)' }]}>
+                                                    <Text style={styles.proInfoLabel}>Pro Status:</Text>
+                                                    <Text style={[styles.proInfoValue, { color: proInfo.isActive ? (selectedUser.pro_expires_at ? '#8B5CF6' : '#FF6B35') : '#64748B' }]}>
+                                                        {proInfo.isActive ? `👑 Active (${proInfo.formattedExpiry})` : proInfo.isExpired ? '❌ Expired' : 'Free Tier'}
+                                                    </Text>
+                                                </View>
+
+                                                <Text style={[styles.modalLabel, { marginTop: 14 }]}>Grant Pro Duration (Auto-Expires):</Text>
+                                                <View style={styles.durationGrid}>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#8B5CF6' }]} onPress={() => handleGrantTimedPro(1)}>
+                                                        <Text style={styles.durationBtnText}>⚡ 1 Day</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#8B5CF6' }]} onPress={() => handleGrantTimedPro(7)}>
+                                                        <Text style={styles.durationBtnText}>📅 7 Days</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#8B5CF6' }]} onPress={() => handleGrantTimedPro(30)}>
+                                                        <Text style={styles.durationBtnText}>🗓️ 30 Days</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#8B5CF6' }]} onPress={() => handleGrantTimedPro(90)}>
+                                                        <Text style={styles.durationBtnText}>🚀 90 Days</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#8B5CF6' }]} onPress={() => handleGrantTimedPro(365)}>
+                                                        <Text style={styles.durationBtnText}>👑 1 Year</Text>
+                                                    </TouchableOpacity>
+                                                    <TouchableOpacity style={[styles.durationBtn, { borderColor: '#FF6B35' }]} onPress={() => handleGrantTimedPro(null)}>
+                                                        <Text style={[styles.durationBtnText, { color: '#FF6B35' }]}>♾️ Lifetime</Text>
+                                                    </TouchableOpacity>
+                                                </View>
+
+                                                {proInfo.isActive && (
+                                                    <TouchableOpacity style={styles.revokeBtn} onPress={handleRevokePro}>
+                                                        <Ionicons name="close-circle" size={16} color="#EF4444" />
+                                                        <Text style={styles.revokeBtnText}>Revoke Pro Access</Text>
+                                                    </TouchableOpacity>
+                                                )}
+
+                                                <Text style={[styles.modalLabel, { marginTop: 14 }]}>Card Balance:</Text>
+                                                <TextInput style={[styles.modalInput, glassStyles.container]} defaultValue={String(selectedUser.card_count ?? 0)} keyboardType="numeric" onChangeText={(v) => setSelectedUser({ ...selectedUser, card_count: parseInt(v) || 0 })} />
+                                                <TouchableOpacity style={styles.saveActionBtn} onPress={handleSaveUser}><Text style={styles.saveActionText}>Save Card Balance</Text></TouchableOpacity>
+                                            </>
+                                        );
+                                    })()}
+                                    <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowUserModal(false)}><Text style={styles.closeModalText}>Close</Text></TouchableOpacity>
+                                </View>
+                            </KeyboardAvoidingView>
                         </View>
-                    </View>
+                    </TouchableWithoutFeedback>
                 </Modal>
 
                 <Modal
@@ -482,23 +584,27 @@ export default function AdminScreen() {
                     hardwareAccelerated={true}
                     statusBarTranslucent={true}
                 >
-                    <View style={styles.modalOverlay}>
-                        <ScrollView style={[styles.modalContent, glassStyles.container]}>
-                            <Text style={styles.modalTitle}>{selectedCard?.id ? 'Edit Card' : 'New Card'}</Text>
-                            {selectedCard && (
-                                <>
-                                    <TextInput style={[styles.modalInput, glassStyles.container, { height: 80 }]} multiline value={selectedCard.text} onChangeText={t => setSelectedCard({ ...selectedCard, text: t })} />
-                                    <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.type} onChangeText={t => setSelectedCard({ ...selectedCard, type: t })} placeholder="Type (fun/romantic/spicy/ldr)" />
-                                    <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.timer ? String(selectedCard.timer) : ''} keyboardType="numeric" onChangeText={t => setSelectedCard({ ...selectedCard, timer: parseInt(t) })} placeholder="Timer (optional)" />
-                                    <TouchableOpacity style={styles.saveActionBtn} onPress={handleUpsertCard}><Text style={styles.saveActionText}>Save Card</Text></TouchableOpacity>
-                                    {selectedCard.id && (
-                                        <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDeleteCard(selectedCard.id)}><Text style={styles.deleteText}>Delete Card</Text></TouchableOpacity>
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <View style={styles.modalOverlay}>
+                            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%', alignItems: 'center' }}>
+                                <ScrollView style={[styles.modalContent, glassStyles.container]} keyboardShouldPersistTaps="handled">
+                                    <Text style={styles.modalTitle}>{selectedCard?.id ? 'Edit Card' : 'New Card'}</Text>
+                                    {selectedCard && (
+                                        <>
+                                            <TextInput style={[styles.modalInput, glassStyles.container, { height: 80 }]} multiline value={selectedCard.text} onChangeText={t => setSelectedCard({ ...selectedCard, text: t })} />
+                                            <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.type} onChangeText={t => setSelectedCard({ ...selectedCard, type: t })} placeholder="Type (fun/romantic/spicy/ldr)" />
+                                            <TextInput style={[styles.modalInput, glassStyles.container, { marginTop: 10 }]} value={selectedCard.timer ? String(selectedCard.timer) : ''} keyboardType="numeric" onChangeText={t => setSelectedCard({ ...selectedCard, timer: parseInt(t) })} placeholder="Timer (optional)" />
+                                            <TouchableOpacity style={styles.saveActionBtn} onPress={handleUpsertCard}><Text style={styles.saveActionText}>Save Card</Text></TouchableOpacity>
+                                            {selectedCard.id && (
+                                                <TouchableOpacity style={styles.deleteBtn} onPress={() => confirmDeleteCard(selectedCard.id)}><Text style={styles.deleteText}>Delete Card</Text></TouchableOpacity>
+                                            )}
+                                        </>
                                     )}
-                                </>
-                            )}
-                            <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowCardModal(false)}><Text style={styles.closeModalText}>Cancel</Text></TouchableOpacity>
-                        </ScrollView>
-                    </View>
+                                    <TouchableOpacity style={styles.closeModalBtn} onPress={() => setShowCardModal(false)}><Text style={styles.closeModalText}>Cancel</Text></TouchableOpacity>
+                                </ScrollView>
+                            </KeyboardAvoidingView>
+                        </View>
+                    </TouchableWithoutFeedback>
                 </Modal>
             </SafeAreaView>
         </AnimatedBackground>
@@ -602,6 +708,14 @@ const styles = StyleSheet.create({
     modalTitle: { fontSize: 22, fontWeight: '900', color: '#1E293B', marginBottom: 20 },
     modalLabel: { fontSize: 13, fontWeight: '800', color: '#64748B', marginBottom: 8, marginTop: 12 },
     modalInput: { padding: 16, borderRadius: 16, fontSize: 15, color: '#1E293B', backgroundColor: 'rgba(0,0,0,0.03)' },
+    proInfoBanner: { padding: 12, borderRadius: 14, borderWidth: 1.5, backgroundColor: 'rgba(0,0,0,0.02)', marginVertical: 6, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    proInfoLabel: { fontSize: 13, fontWeight: '700', color: '#64748B' },
+    proInfoValue: { fontSize: 13, fontWeight: '800' },
+    durationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 8 },
+    durationBtn: { width: '31%' as any, paddingVertical: 10, paddingHorizontal: 6, borderRadius: 12, borderWidth: 1.5, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.02)' },
+    durationBtnText: { fontSize: 11, fontWeight: '800', color: '#8B5CF6' },
+    revokeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, backgroundColor: 'rgba(239, 68, 68, 0.08)', borderRadius: 12, marginTop: 6, marginBottom: 6 },
+    revokeBtnText: { color: '#EF4444', fontSize: 12, fontWeight: '800' },
     actionBtn: { paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 24 },
     actionBtnText: { color: '#fff', fontSize: 15, fontWeight: '800' },
     saveActionBtn: { backgroundColor: '#FF6B35', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 12 },

@@ -29,12 +29,31 @@ const CARD_THEMES: Record<string, {
 export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
     const flipAnim = useSharedValue(isFlipped ? 1 : 0);
     const scaleAnim = useSharedValue(0.92);
-    const { width } = useWindowDimensions();
+    const { width, height } = useWindowDimensions();
 
-    const CARD_WIDTH = Math.min(Math.max(width * 0.82, 280), 420);
-    const CARD_HEIGHT = CARD_WIDTH * 1.25;
+    const isSmallDevice = height < 720 || width < 360;
+    const CARD_WIDTH = Math.min(Math.max(width * 0.84, 280), 390);
+    // Responsive height that fits comfortably on short screens (iPhone SE, etc.) and tall modern flagships
+    const maxAvailableHeight = isSmallDevice ? height * 0.52 : height * 0.58;
+    const CARD_HEIGHT = Math.min(Math.max(CARD_WIDTH * 1.34, 360), Math.max(maxAvailableHeight, 400));
 
     const theme = CARD_THEMES[card.type] || CARD_THEMES.fun;
+
+    const textLength = card.text?.length || 0;
+    const isLongText = textLength > 100;
+    const isVeryLongText = textLength > 160;
+
+    const dareFontSize = isVeryLongText 
+        ? (CARD_WIDTH < 320 ? 14 : 15) 
+        : isLongText 
+            ? (CARD_WIDTH < 320 ? 16 : 17) 
+            : (CARD_WIDTH < 320 ? 18 : 20);
+
+    const dareLineHeight = isVeryLongText 
+        ? (CARD_WIDTH < 320 ? 20 : 22) 
+        : isLongText 
+            ? (CARD_WIDTH < 320 ? 23 : 25) 
+            : (CARD_WIDTH < 320 ? 26 : 28);
 
     useEffect(() => {
         flipAnim.value = withTiming(isFlipped ? 1 : 0, { duration: 480 });
@@ -43,17 +62,21 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
 
     const frontStyle = useAnimatedStyle(() => {
         const rotateY = interpolate(flipAnim.value, [0, 1], [0, 180], Extrapolation.CLAMP);
+        const zIndex = interpolate(flipAnim.value, [0, 0.5, 1], [2, 1, 0], Extrapolation.CLAMP);
         return {
             transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }, { scale: scaleAnim.value }],
-            backfaceVisibility: 'hidden' as const,
+            backfaceVisibility: 'hidden',
+            zIndex,
         };
     });
 
     const backStyle = useAnimatedStyle(() => {
         const rotateY = interpolate(flipAnim.value, [0, 1], [180, 360], Extrapolation.CLAMP);
+        const zIndex = interpolate(flipAnim.value, [0, 0.5, 1], [0, 1, 2], Extrapolation.CLAMP);
         return {
             transform: [{ perspective: 1200 }, { rotateY: `${rotateY}deg` }, { scale: scaleAnim.value }],
-            backfaceVisibility: 'hidden' as const,
+            backfaceVisibility: 'hidden',
+            zIndex,
         };
     });
 
@@ -65,7 +88,7 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
     return (
         <Animated.View entering={require('react-native-reanimated').ZoomIn.springify().damping(14).stiffness(120)} style={[styles.container, { width: CARD_WIDTH, height: CARD_HEIGHT }]}>
             {/* BACK SIDE (card face-down / pre-flip) */}
-            <Animated.View style={[styles.cardWrap, frontStyle]}>
+            <Animated.View style={[styles.cardWrap, styles.absoluteCard, frontStyle]}>
                 <TouchableOpacity activeOpacity={0.9} onPress={handlePress} style={{ flex: 1 }}>
                     <LinearGradient colors={['#1a1a2e', '#16213e', '#0f3460']} style={styles.cardBack} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}>
                         {/* Decorative pattern */}
@@ -120,13 +143,33 @@ export default function Card({ card, isFlipped = true, onFlip }: CardProps) {
                         {/* Main dare content */}
                         <View style={styles.dareBody}>
                             <ScrollView
-                                contentContainerStyle={[styles.scrollContent, { paddingHorizontal: CARD_WIDTH < 320 ? 18 : 24, paddingVertical: CARD_WIDTH < 320 ? 12 : 15 }]}
+                                contentContainerStyle={[
+                                    styles.scrollContent, 
+                                    { 
+                                        paddingHorizontal: CARD_WIDTH < 320 ? 16 : 22, 
+                                        paddingTop: 12,
+                                        paddingBottom: 16 
+                                    }
+                                ]}
                                 showsVerticalScrollIndicator={false}
-                                centerContent={true}
+                                bounces={false}
                             >
-                                <Text style={styles.dareIcon}>{theme.icon}</Text>
-                                <Text style={styles.dareLabel}>Dare!</Text>
-                                <Text style={[styles.dareText, { fontSize: CARD_WIDTH < 320 ? 17 : 19, lineHeight: CARD_WIDTH < 320 ? 24 : 28 }]}>{card.text}</Text>
+                                <View style={[styles.dareBadge, { backgroundColor: `${theme.accent}15` }]}>
+                                    <Text style={[styles.dareBadgeText, { color: theme.accent }]}>YOUR DARE</Text>
+                                </View>
+                                <Text 
+                                    style={[
+                                        styles.dareText, 
+                                        { 
+                                            fontSize: dareFontSize, 
+                                            lineHeight: dareLineHeight 
+                                        }
+                                    ]}
+                                    allowFontScaling={true}
+                                    maxFontSizeMultiplier={1.25}
+                                >
+                                    "{card.text}"
+                                </Text>
                             </ScrollView>
                         </View>
 
@@ -242,15 +285,15 @@ const styles = StyleSheet.create({
     cardFront: {
         flex: 1,
         borderRadius: 24,
-        backgroundColor: 'rgba(255, 255, 255, 0.85)', // Glassy White
+        backgroundColor: 'rgba(255, 255, 255, 0.9)', // Clean Glassy White
         overflow: 'hidden',
         borderWidth: 1.5,
-        borderColor: 'rgba(255, 255, 255, 0.5)',
+        borderColor: 'rgba(255, 255, 255, 0.6)',
     },
     headerStrip: {
-        paddingTop: 24,
-        paddingBottom: 20,
-        paddingHorizontal: 20,
+        paddingTop: 16,
+        paddingBottom: 14,
+        paddingHorizontal: 16,
         overflow: 'hidden',
     },
     headerContent: {
@@ -282,29 +325,29 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         backgroundColor: 'rgba(255, 255, 255, 0.25)',
         borderRadius: 20,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        gap: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        gap: 6,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.3)',
     },
-    typeIcon: { fontSize: 16 },
+    typeIcon: { fontSize: 15 },
     typeLabel: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '900',
         color: '#fff',
-        letterSpacing: 1.5,
+        letterSpacing: 1.2,
     },
     timerBadge: {
         backgroundColor: 'rgba(255, 255, 255, 0.25)',
         borderRadius: 14,
-        paddingHorizontal: 12,
-        paddingVertical: 6,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.3)',
     },
     timerText: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '800',
         color: '#fff',
     },
@@ -318,46 +361,47 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    dareIcon: {
-        fontSize: 48,
-        marginBottom: 8,
-        opacity: 0.9,
+    dareBadge: {
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginBottom: 10,
     },
-    dareLabel: {
-        fontFamily: 'Pacifico_400Regular',
-        fontSize: 28,
-        color: '#1a1a1a',
-        marginBottom: 12,
-        opacity: 0.9,
+    dareBadgeText: {
+        fontSize: 10,
+        fontWeight: '900',
+        letterSpacing: 1.2,
     },
     dareText: {
         fontFamily: 'Quicksand_700Bold',
-        color: '#333',
+        color: '#222',
         textAlign: 'center',
+        paddingHorizontal: 4,
     },
 
     footer: {
         alignItems: 'center',
-        paddingBottom: 24,
-        gap: 10,
+        paddingBottom: 14,
+        paddingTop: 6,
+        gap: 6,
     },
     xpBadge: {
-        borderRadius: 24,
-        paddingHorizontal: 28,
-        paddingVertical: 10,
+        borderRadius: 20,
+        paddingHorizontal: 22,
+        paddingVertical: 7,
         shadowColor: 'rgba(0,0,0,0.05)',
         shadowOpacity: 0.1,
-        shadowRadius: 10,
+        shadowRadius: 8,
         elevation: 0,
     },
     xpText: {
         fontFamily: 'Quicksand_700Bold',
-        fontSize: 15,
+        fontSize: 13,
         color: '#fff',
         letterSpacing: 1,
     },
     tapHint: {
-        fontSize: 12,
+        fontSize: 11,
         color: '#999',
         fontWeight: '700',
         letterSpacing: 1,

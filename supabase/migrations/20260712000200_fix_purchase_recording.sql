@@ -36,7 +36,7 @@ AS $$
 DECLARE
   v_profile public.profiles;
 BEGIN
-  IF auth.uid() IS NOT NULL AND auth.uid() != p_user_id AND NOT public.is_admin() THEN
+  IF auth.uid() IS NULL OR (auth.uid() != p_user_id AND NOT public.is_admin()) THEN
     RAISE EXCEPTION 'Unauthorized';
   END IF;
 

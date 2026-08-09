@@ -21,7 +21,7 @@ import { useRouter } from 'expo-router';
 import { typography } from '../../src/constants/typography';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import PaywallModal from '../../src/components/PaywallModal';
-import { getOfferings, purchasePackage } from '../../src/services/revenueCatService';
+import { getOfferings, purchasePackage, getCustomerInfo, getProEntitlementDetails } from '../../src/services/revenueCatService';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens, brandGradient } from '../../src/constants/glass';
 
@@ -66,8 +66,9 @@ export default function TabHomeScreen() {
         selectedVibe, setSelectedVibe, selectedIntensity, setSelectedIntensity,
         scores, addPoint, addHistoryEntry,
         isPro, lastPaywallShown, setLastPaywallShown, showAlert,
-        drawCard, streak, updateStreak, syncWithSupabase,
-        hasHydrated
+        drawCard, activeCustomCard, setActiveCustomCard, streak, updateStreak, syncWithSupabase,
+        hasHydrated, remoteConfigs,
+        gender, relationshipStatus, appPurpose
     } = useStore(useShallow((state: any) => ({
         partner1: state.partner1,
         partner2: state.partner2,
@@ -87,13 +88,27 @@ export default function TabHomeScreen() {
         setLastPaywallShown: state.setLastPaywallShown,
         showAlert: state.showAlert,
         drawCard: state.drawCard,
+        activeCustomCard: state.activeCustomCard,
+        setActiveCustomCard: state.setActiveCustomCard,
         streak: state.streak,
         updateStreak: state.updateStreak,
         syncWithSupabase: state.syncWithSupabase,
         hasHydrated: state.hasHydrated,
+        remoteConfigs: state.remoteConfigs,
+        gender: state.gender,
+        relationshipStatus: state.relationshipStatus,
+        appPurpose: state.appPurpose,
     })));
 
     const [currentCard, setCurrentCard] = useState<DareCard | null>(null);
+
+    useEffect(() => {
+        if (activeCustomCard) {
+            setCurrentCard(activeCustomCard);
+            setIsFlipped(false);
+            setActiveCustomCard(null);
+        }
+    }, [activeCustomCard]);
     const [isFlipped, setIsFlipped] = useState(false);
     const [showConfetti, setShowConfetti] = useState(false);
     const [cardsPlayed, setCardsPlayed] = useState(0);
@@ -108,10 +123,6 @@ export default function TabHomeScreen() {
     const pointsY = useSharedValue(20);
     const pointsO = useSharedValue(0);
     const glowO = useSharedValue(0.3);
-
-    useEffect(() => {
-        hydrate();
-    }, [hydrate]);
 
     useEffect(() => {
         pulseScale.value = withRepeat(
@@ -173,6 +184,7 @@ export default function TabHomeScreen() {
 
     const handleDrawCard = async () => {
         const store = useStore.getState();
+
         if (!store.isPro && store.cardCount <= 0 && store.isAuthenticated) {
             await store.syncWithSupabase();
         }
@@ -183,21 +195,33 @@ export default function TabHomeScreen() {
                 { text: 'Share', onPress: () => router.push('/(tabs)/history') }
             ]);
         }
-        if (!isPro && cardCount <= 0) {
-            showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck and keep the fun going.', [
+
+        // Out of cards check ONLY applies to non-Pro users!
+        if (!store.isPro && store.cardCount <= 0) {
+            showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck or upgrade to Pro for unlimited cards!', [
                 { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
                 { text: 'Not right now', style: 'cancel' }
             ]);
             return;
         }
-        const drawn = store.drawCard(selectedVibe);
+
+        let drawn = store.drawCard(selectedVibe);
         if (!drawn) {
-            showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck and keep the fun going.', [
-                { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
-                { text: 'Not right now', style: 'cancel' }
-            ]);
+            drawn = store.drawCard(null);
+        }
+
+        if (!drawn) {
+            if (!store.isPro) {
+                showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck and keep the fun going.', [
+                    { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
+                    { text: 'Not right now', style: 'cancel' }
+                ]);
+            } else {
+                showAlert('Cards Loading', 'Deck is refreshing. Please tap Draw again.');
+            }
             return;
         }
+
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setCurrentCard(drawn);
         setIsFlipped(false);
@@ -220,11 +244,10 @@ export default function TabHomeScreen() {
             setCurrentCard(null);
         } else if (action === 'skip') {
             const performSkip = () => {
-                useStore.getState().drawCard();
                 setCurrentCard(null);
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             };
-            showAlert('Why skip?', 'Skipping costs 1 random card from your deck.', [
+            showAlert('Skip Dare?', 'Are you sure you want to skip this dare?', [
                 { text: 'Too spicy 🥵', onPress: performSkip },
                 { text: 'Not in the mood 😴', onPress: performSkip },
                 { text: 'Maybe later ⏳', onPress: performSkip },
@@ -240,9 +263,23 @@ export default function TabHomeScreen() {
         try {
             const result = await purchasePackage(pkg);
             if (result.success) {
-                useStore.getState().setIsPro(true);
+                const info = await getCustomerInfo();
+                const proDetails = getProEntitlementDetails(info);
+                const activePro = proDetails.isPro || Boolean(pkg?.isMock) || __DEV__;
+                const store = useStore.getState();
+                store.setIsPro(activePro, proDetails.expiresAt);
+                if (activePro && store.userId) {
+                    const api = await import('../../src/services/api');
+                    api.syncProStatusToBackend(store.userId, true, proDetails.expiresAt).catch(() => {});
+                }
                 setShowPaywall(false);
-                showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.');
+                if (activePro) {
+                    showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.');
+                } else {
+                    showAlert('Purchase Pending', 'Your purchase is complete, but Pro is still syncing. Please reopen the app or tap Restore.');
+                }
+            } else if (result.error && result.error !== 'Purchase cancelled') {
+                showAlert('Purchase Failed', result.error);
             }
         } catch (e) {
             console.warn('Purchase failed from popup', e);
@@ -258,6 +295,84 @@ export default function TabHomeScreen() {
     };
 
     const activeVibeKey = selectedVibe || 'all';
+
+    const getRecommendation = () => {
+        if (appPurpose === 'spice') {
+            return {
+                emoji: '🔥',
+                badge: 'Spicy Goal',
+                title: 'Sensual Heat & Dares',
+                desc: 'Turn up the passion and intimate heat tonight.',
+                action: () => {
+                    setSelectedVibe('spicy');
+                    setSelectedIntensity(2);
+                    Haptics.selectionAsync();
+                },
+                cta: 'Play Spicy',
+                color: '#F43F5E',
+                gradient: ['rgba(244, 63, 94, 0.15)', 'rgba(249, 115, 22, 0.15)'] as const
+            };
+        } else if (appPurpose === 'deep') {
+            return {
+                emoji: '💬',
+                badge: 'Connection Goal',
+                title: 'Deep Heart-to-Heart',
+                desc: 'Spark intimate discussions and deep bonding.',
+                action: () => {
+                    setSelectedVibe('romantic');
+                    Haptics.selectionAsync();
+                },
+                cta: 'Explore',
+                color: '#EC4899',
+                gradient: ['rgba(236, 72, 153, 0.15)', 'rgba(168, 85, 247, 0.15)'] as const
+            };
+        } else if (appPurpose === 'ldr' || relationshipStatus === 'ldr') {
+            return {
+                emoji: '✈️',
+                badge: 'LDR Mode',
+                title: 'Long Distance Room',
+                desc: 'Real-time dare sync & synced video calls.',
+                action: () => {
+                    Haptics.selectionAsync();
+                    router.push('/(tabs)/ldr');
+                },
+                cta: 'Open LDR',
+                color: '#3B82F6',
+                gradient: ['rgba(59, 130, 246, 0.15)', 'rgba(99, 102, 241, 0.15)'] as const
+            };
+        } else if (appPurpose === 'fantasies') {
+            return {
+                emoji: '🚀',
+                badge: 'Fantasy Goal',
+                title: 'Explore New Desires',
+                desc: 'Exciting dares to discover new sides together.',
+                action: () => {
+                    setSelectedVibe('spicy');
+                    setSelectedIntensity(3);
+                    Haptics.selectionAsync();
+                },
+                cta: 'Start Now',
+                color: '#8B5CF6',
+                gradient: ['rgba(139, 92, 246, 0.15)', 'rgba(236, 72, 153, 0.15)'] as const
+            };
+        } else {
+            return {
+                emoji: '✨',
+                badge: 'Fun & Party',
+                title: 'Playful Laughter & Games',
+                desc: 'Lighthearted dares made for smiling together.',
+                action: () => {
+                    setSelectedVibe('fun');
+                    Haptics.selectionAsync();
+                },
+                cta: 'Play Fun',
+                color: '#10B981',
+                gradient: ['rgba(16, 185, 129, 0.15)', 'rgba(245, 158, 11, 0.15)'] as const
+            };
+        }
+    };
+
+    const recommendation = getRecommendation();
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
@@ -290,9 +405,12 @@ export default function TabHomeScreen() {
                         <TouchableOpacity
                             style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]}
                             activeOpacity={0.8}
-                            onPress={() => router.push('/(tabs)/shop')}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(tabs)/shop');
+                            }}
                         >
-                            <Ionicons name={isPro ? "diamond" : "albums-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
+                            <Ionicons name={isPro ? "diamond" : "bag-handle-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
                             <Text style={[styles.cardPillText, isPro && styles.proCardPillText]}>
                                 {isPro ? 'Pro Active' : `${cardCount} cards`}
                             </Text>
@@ -310,6 +428,90 @@ export default function TabHomeScreen() {
                         >
                             <Text style={styles.streakTeaserText}>🔥 {streak}-day love streak — answer today's question</Text>
                             <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
+                        </TouchableOpacity>
+                    </Animated.View>
+                )}
+
+                {/* ── Smart Recommendation Banner ── */}
+                {!currentCard && (
+                    <Animated.View entering={FadeInDown.delay(250).duration(500)} style={styles.recommendationWrap}>
+                        <LinearGradient
+                            colors={recommendation.gradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={[styles.recommendationCard, glassStyles.container]}
+                        >
+                            <View style={styles.recIconWrap}>
+                                <Text style={styles.recEmoji}>{recommendation.emoji}</Text>
+                            </View>
+                            <View style={styles.recContent}>
+                                <View style={styles.recBadgeRow}>
+                                    <View style={[styles.recBadge, { backgroundColor: recommendation.color }]}>
+                                        <Text style={styles.recBadgeText}>{recommendation.badge}</Text>
+                                    </View>
+                                    <Text style={styles.recHint}>Recommended</Text>
+                                </View>
+                                <Text style={styles.recTitle}>{recommendation.title}</Text>
+                                <Text style={styles.recDesc} numberOfLines={1}>{recommendation.desc}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={[styles.recBtn, { backgroundColor: recommendation.color }]}
+                                onPress={recommendation.action}
+                                activeOpacity={0.8}
+                            >
+                                <Text style={styles.recBtnText}>{recommendation.cta}</Text>
+                            </TouchableOpacity>
+                        </LinearGradient>
+                    </Animated.View>
+                )}
+
+                {/* ── Quick Discovery Row (AI Studio & Quiz Mode) ── */}
+                {!currentCard && (
+                    <Animated.View entering={FadeInDown.delay(300).duration(500)} style={styles.quickFeaturesRow}>
+                        <TouchableOpacity
+                            style={[styles.quickFeatureTile, glassStyles.container]}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/ai-generator');
+                            }}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['rgba(255, 107, 53, 0.12)', 'rgba(236, 72, 153, 0.08)']}
+                                style={styles.quickFeatureGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                <Text style={styles.quickFeatureEmoji}>✨</Text>
+                                <View style={styles.quickFeatureTextWrap}>
+                                    <Text style={styles.quickFeatureTitle}>AI Dare Studio</Text>
+                                    <Text style={styles.quickFeatureSub}>Custom dares</Text>
+                                </View>
+                                <Ionicons name="sparkles" size={14} color="#FF6B35" />
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.quickFeatureTile, glassStyles.container]}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/quiz');
+                            }}
+                            activeOpacity={0.8}
+                        >
+                            <LinearGradient
+                                colors={['rgba(99, 102, 241, 0.12)', 'rgba(236, 72, 153, 0.08)']}
+                                style={styles.quickFeatureGradient}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 1 }}
+                            >
+                                <Text style={styles.quickFeatureEmoji}>💑</Text>
+                                <View style={styles.quickFeatureTextWrap}>
+                                    <Text style={styles.quickFeatureTitle}>Couples Quiz</Text>
+                                    <Text style={styles.quickFeatureSub}>Test harmony</Text>
+                                </View>
+                                <Ionicons name="heart" size={14} color="#EC4899" />
+                            </LinearGradient>
                         </TouchableOpacity>
                     </Animated.View>
                 )}
@@ -380,7 +582,7 @@ export default function TabHomeScreen() {
                     >
                         {/* Vibe Filters */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
-                            {VIBES.map(({ key, label, color, premium }) => {
+                            {VIBES.filter(v => v.key !== 'spicy' || (remoteConfigs?.feature_flags?.spicy_category ?? true)).map(({ key, label, color, premium }) => {
                                 const active = activeVibeKey === key;
                                 const isLocked = premium && !isPro;
                                 return (
@@ -554,9 +756,9 @@ const styles = StyleSheet.create({
     streakTeaserText: { fontSize: 13, fontWeight: '700', color: '#1a1a1a' },
 
     // ── Card ──
-    cardWrapper: { alignItems: 'center' },
+    cardWrapper: { alignItems: 'center', justifyContent: 'center', width: '100%' },
     actionRow: {
-        flexDirection: 'row', marginTop: 24, gap: 10, justifyContent: 'center',
+        flexDirection: 'row', marginTop: 14, gap: 12, justifyContent: 'center',
     },
     actionBtn: {
         borderRadius: 16, overflow: 'hidden',
@@ -565,7 +767,7 @@ const styles = StyleSheet.create({
     },
     actionGradient: {
         flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingVertical: 12, paddingHorizontal: 20,
+        paddingVertical: 11, paddingHorizontal: 22,
     },
     actionTextDark: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
     actionTextLight: { fontSize: 14, fontWeight: '700', color: '#fff' },
@@ -666,4 +868,28 @@ const styles = StyleSheet.create({
         paddingVertical: 16,
     },
     outShopBtnText: { color: '#fff', fontWeight: '700', fontSize: 13 },
+
+    // Recommendation Banner
+    recommendationWrap: { paddingHorizontal: 20, marginTop: 10, marginBottom: 2 },
+    recommendationCard: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.7)' },
+    recIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.8)', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+    recEmoji: { fontSize: 22 },
+    recContent: { flex: 1, marginRight: 10 },
+    recBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
+    recBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
+    recBadgeText: { color: '#fff', fontSize: 9, fontWeight: '900', letterSpacing: 0.5, textTransform: 'uppercase' },
+    recHint: { fontSize: 10, color: '#888', fontWeight: '600' },
+    recTitle: { fontSize: 14, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
+    recDesc: { fontSize: 11.5, color: '#666', fontWeight: '500' },
+    recBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+    recBtnText: { color: '#fff', fontSize: 12, fontWeight: '800' },
+
+    // Quick Discovery Row
+    quickFeaturesRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginTop: 8, marginBottom: 4 },
+    quickFeatureTile: { flex: 1, borderRadius: 18, overflow: 'hidden' },
+    quickFeatureGradient: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, gap: 8 },
+    quickFeatureEmoji: { fontSize: 20 },
+    quickFeatureTextWrap: { flex: 1 },
+    quickFeatureTitle: { fontSize: 12.5, fontWeight: '800', color: '#1A1A2E' },
+    quickFeatureSub: { fontSize: 10.5, color: '#6B7280', fontWeight: '500' },
 });

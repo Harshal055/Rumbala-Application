@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar,
+    TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -32,6 +33,7 @@ export default function LoginScreen() {
         if (webClientId) {
             GoogleSignin.configure({
                 webClientId: webClientId,
+                iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
                 offlineAccess: true,
                 forceCodeForRefreshToken: true,
             });
@@ -131,11 +133,12 @@ export default function LoginScreen() {
                 </Animated.View>
 
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <ScrollView 
-                        contentContainerStyle={styles.scroll} 
-                        keyboardShouldPersistTaps="handled" 
-                        showsVerticalScrollIndicator={false}
-                    >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView 
+                            contentContainerStyle={styles.scroll} 
+                            keyboardShouldPersistTaps="handled" 
+                            showsVerticalScrollIndicator={false}
+                        >
                         <Animated.View 
                             entering={FadeInDown.delay(200).duration(800)} 
                             renderToHardwareTextureAndroid={true}
@@ -230,7 +233,8 @@ export default function LoginScreen() {
                                 </Text>
                             </TouchableOpacity>
                         </Animated.View>
-                    </ScrollView>
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
                 </KeyboardAvoidingView>
             </SafeAreaView>
         </AnimatedBackground>

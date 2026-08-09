@@ -1,5 +1,5 @@
--- Run this in your Supabase SQL Editor
--- This allows anyone to promote an Admin IF they know the hardcoded PIN
+-- Rumbala Secure Admin Provisioning
+-- Run this in your Supabase SQL Editor (Dashboard > SQL Editor)
 
 -- 1. Create the admin_roles table (if it doesn't exist)
 CREATE TABLE IF NOT EXISTS public.admin_roles (
@@ -7,35 +7,28 @@ CREATE TABLE IF NOT EXISTS public.admin_roles (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. Create the secure RPC function to grant admin access via PIN
-CREATE OR REPLACE FUNCTION public.grant_admin_with_pin(secret_pin text, target_email text)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER -- Runs with superuser privileges so it bypasses RLS
-AS $$
-DECLARE
-  target_user_id uuid;
-BEGIN
-  -- 1. Verify the hardcoded PIN
-  IF secret_pin != '3012' THEN
-    RAISE EXCEPTION 'Invalid PIN.';
-  END IF;
+-- Enable RLS on admin_roles
+ALTER TABLE public.admin_roles ENABLE ROW LEVEL SECURITY;
 
-  -- 2. Find the user ID from the profiles table using their email
-  SELECT id INTO target_user_id
-  FROM public.profiles
-  WHERE lower(email) = lower(target_email);
+-- Only existing admins can read the admin list
+CREATE POLICY "Admins can view admin list"
+    ON public.admin_roles
+    FOR SELECT
+    TO authenticated
+    USING (
+        auth.uid() IN (SELECT user_id FROM public.admin_roles)
+    );
 
-  -- 3. If user doesn't exist in profiles yet, throw an error
-  IF target_user_id IS NULL THEN
-    RAISE EXCEPTION 'User not found.';
-  END IF;
+-- 2. Promote adminhr@andx.com to admin role:
+INSERT INTO public.admin_roles (user_id)
+VALUES ('c888071a-edc0-4ce7-9622-4ad3f4759d0e')
+ON CONFLICT (user_id) DO NOTHING;
 
-  -- 4. Insert them into admin_roles (if not already there)
-  INSERT INTO public.admin_roles (user_id)
-  VALUES (target_user_id)
-  ON CONFLICT (user_id) DO NOTHING;
+-- Or promote dynamically by email:
+INSERT INTO public.admin_roles (user_id)
+SELECT id FROM auth.users WHERE lower(email) = lower('adminhr@andx.com')
+ON CONFLICT (user_id) DO NOTHING;
 
-  RETURN true;
-END;
-$$;
+-- 3. Drop legacy insecure functions if any
+DROP FUNCTION IF EXISTS public.grant_admin_with_pin(text, text);
+

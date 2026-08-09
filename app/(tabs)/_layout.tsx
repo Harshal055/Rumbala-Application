@@ -62,25 +62,28 @@ export default function TabLayout() {
                 tabBarStyle: isLdrActive
                     ? { display: 'none' as const, height: 0, overflow: 'hidden' as const }
                     : {
-                        backgroundColor: '#FFFFFF',
+                        position: 'absolute',
+                        bottom: bottomInset > 0 ? bottomInset : 24,
+                        left: 24,
+                        right: 24,
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
                         borderTopWidth: 0,
-                        height: 60 + bottomInset,
-                        paddingBottom: bottomInset,
-                        paddingTop: 8,
-                        elevation: 0,
-                        shadowColor: 'rgba(0,0,0,0.05)',
-                        shadowOffset: { width: 0, height: -6 },
-                        shadowOpacity: 0.05,
-                        shadowRadius: 15,
-                        borderTopLeftRadius: 25,
-                        borderTopRightRadius: 25,
+                        height: 64,
+                        paddingBottom: 0,
+                        paddingTop: 0,
+                        elevation: 15,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 10 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 25,
+                        borderRadius: 32,
                     },
                 tabBarActiveTintColor: '#FF6B35',
                 tabBarInactiveTintColor: '#999999',
-                tabBarLabelStyle: {
-                    fontSize: 11,
-                    fontWeight: '700',
-                    marginTop: 4,
+                tabBarShowLabel: false,
+                tabBarItemStyle: {
+                    justifyContent: 'center',
+                    alignItems: 'center',
                 }
             }}
         >
@@ -110,8 +113,7 @@ export default function TabLayout() {
             <Tabs.Screen
                 name="shop"
                 options={{
-                    title: 'Shop',
-                    tabBarIcon: ({ color, focused }) => <TabIcon name="bag" focused={focused} color={color} />,
+                    href: null,
                 }}
             />
             <Tabs.Screen

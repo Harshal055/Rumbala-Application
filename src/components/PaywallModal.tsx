@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import LegalModal from './LegalModal';
 import { glassStyles, glassTokens } from '../constants/glass';
-import { getOfferings, restorePurchases, checkProEntitlement } from '../services/revenueCatService';
+import { getOfferings, restorePurchases, checkProEntitlement, rcProduct, rcProductId } from '../services/revenueCatService';
 import { useStore } from '../store/useStore';
 import { PurchasesPackage } from 'react-native-purchases';
 import { PAYWALL_FEATURES, resolvePlanPackages, getPackageKind } from '../constants/pricing';
@@ -22,6 +22,7 @@ interface PaywallModalProps {
 }
 
 export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallModalProps) {
+    const isPro = useStore(state => state.isPro);
     const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
     const [packages, setPackages] = useState<PurchasesPackage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -30,6 +31,8 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
     const [isRestoring, setIsRestoring] = useState(false);
     const setIsPro = useStore(state => state.setIsPro);
     const showAlert = useStore(state => state.showAlert);
+
+    if (!visible || isPro) return null;
 
     // Apple requires a working Restore Purchases control on any paywall.
     const handleRestore = async () => {
@@ -60,25 +63,18 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
         setLoading(true);
         try {
             const offerings = await getOfferings();
-            const currentOffering = offerings?.current || offerings;
-
-            if (currentOffering?.availablePackages) {
-                const allPackages: PurchasesPackage[] = currentOffering.availablePackages;
-                const planPackages = allPackages.filter((pkg) => {
-                    const kind = getPackageKind(pkg);
-                    return kind === 'annual' || kind === 'monthly';
-                });
-                setPackages(planPackages);
-
-                const { annual, monthly } = resolvePlanPackages(planPackages);
-                setSelectedPackage(annual || monthly || planPackages[0] || null);
-            } else {
-                setPackages([]);
-                setSelectedPackage(null);
+            if (offerings && offerings.current && offerings.current.availablePackages) {
+                const available = offerings.current.availablePackages;
+                const { annual, monthly } = resolvePlanPackages(available);
+                const subPackages = [annual, monthly].filter(Boolean) as PurchasesPackage[];
+                const validPackages = subPackages.length > 0 
+                    ? subPackages 
+                    : available.filter((p: PurchasesPackage) => getPackageKind(p) !== 'consumable');
+                setPackages(validPackages);
+                setSelectedPackage(annual || monthly || validPackages[0] || null);
             }
-        } catch {
-            setPackages([]);
-            setSelectedPackage(null);
+        } catch (e) {
+            console.error('Error loading paywall offerings:', e);
         } finally {
             setLoading(false);
         }
@@ -86,13 +82,16 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
 
     const handleSubscribe = () => {
         if (!selectedPackage) return;
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onSubscribe(selectedPackage);
     };
 
-    const renderPlan = (pkg: PurchasesPackage) => {
-        const isAnnual = pkg.packageType === 'ANNUAL';
-        const isSelected = selectedPackage?.identifier === pkg.identifier;
+    const renderPlan = (pkg: any) => {
+        const isAnnual = pkg.packageType === 'ANNUAL' || /annual|year/i.test(rcProductId(pkg));
+        const isSelected = rcProductId(selectedPackage) === rcProductId(pkg);
+        
+        const product = rcProduct(pkg);
+        const priceString = product?.priceString || product?.currentPrice?.priceString || pkg?.priceString || 'N/A';
         
         return (
             <TouchableOpacity 
@@ -116,7 +115,7 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
                     <Text style={s.planDesc}>{isAnnual ? 'Most popular' : 'Flexible access'}</Text>
                 </View>
                 <View style={s.planPriceWrap}>
-                    <Text style={s.planPrice}>{pkg.product.priceString}</Text>
+                    <Text style={s.planPrice}>{priceString}</Text>
                     <Text style={s.planPeriod}>{isAnnual ? 'per year' : 'per month'}</Text>
                 </View>
             </TouchableOpacity>
@@ -191,13 +190,13 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
                                     style={s.ctaGradient}
                                 >
                                     <Text style={s.ctaText}>
-                                        {selectedPackage?.product.introPrice ? 'Start Free Trial' : 'Subscribe Now'}
+                                        {(selectedPackage as any)?.product?.introPrice ? 'Start Free Trial' : 'Subscribe Now'}
                                     </Text>
                                 </LinearGradient>
                             </TouchableOpacity>
 
                             <Text style={s.trialInfo}>
-                                {selectedPackage?.product.introPrice 
+                                {(selectedPackage as any)?.product?.introPrice 
                                     ? 'Free trial included. Cancel anytime.'
                                     : 'Secured purchase. Cancel anytime.'}
                             </Text>

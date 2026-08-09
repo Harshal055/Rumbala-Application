@@ -1,12 +1,14 @@
 {
   "name": "rumbal",
-  "version": "1.0.0",
+  "version": "1.0.6",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "admin": "npm --prefix admin-web run dev",
+    "admin:build": "npm --prefix admin-web run build",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },
@@ -20,8 +22,6 @@
     "@react-native-google-signin/google-signin": "^16.1.2",
     "@revenuecat/purchases-js": "^1.26.3",
     "@supabase/supabase-js": "^2.99.1",
-    "agora-react-native-rtm": "^1.5.1",
-    "agora-rn-uikit": "^5.0.2",
     "expo": "~54.0.33",
     "expo-application": "~7.0.8",
     "expo-auth-session": "~7.0.10",

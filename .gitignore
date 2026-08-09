@@ -11,6 +11,7 @@ node_modules/
 android/
 ios/
 
+
 # Legacy backend (app now uses Supabase directly)
 backend/
 
@@ -24,6 +25,7 @@ google-services.json
 .env*
 ! .env.example
 play-console-key.json
+admin-portal.html
 
 # Local artifacts
 *.log

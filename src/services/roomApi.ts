@@ -5,6 +5,14 @@
 
 import { DareCard } from '../constants/cards';
 import * as apiService from './api';
+import { supabase } from './supabase';
+
+export interface VideoReactionEvent {
+    emoji: string;
+    senderName?: string;
+    senderId?: string;
+    timestamp: number;
+}
 
 export interface ChatMessage {
     id: number;
@@ -292,4 +300,131 @@ export const getScoresV2 = async (userId: string) => {
 export const getGameStatsV2 = async (userId: string) => {
     return await apiService.getGameStats(userId);
 };
+
+// ===== VIDEO CALL REALTIME REACTIONS =====
+
+const reactionChannels = new Map<string, any>();
+
+/**
+ * Subscribe to real-time emoji reactions in an LDR room
+ */
+export const subscribeToReactionsV2 = (
+    roomCode: string,
+    onReaction: (event: VideoReactionEvent) => void
+) => {
+    const code = roomCode.trim().toUpperCase();
+    const channelName = `reactions_${code}`;
+
+    if (reactionChannels.has(code)) {
+        try {
+            supabase.removeChannel(reactionChannels.get(code));
+        } catch { }
+        reactionChannels.delete(code);
+    }
+
+    const channel = supabase.channel(channelName, {
+        config: { broadcast: { self: false } },
+    });
+
+    channel
+        .on('broadcast', { event: 'reaction' }, ({ payload }: { payload: VideoReactionEvent }) => {
+            if (payload && payload.emoji) {
+                onReaction(payload);
+            }
+        })
+        .subscribe();
+
+    reactionChannels.set(code, channel);
+
+    return () => {
+        try {
+            supabase.removeChannel(channel);
+        } catch { }
+        reactionChannels.delete(code);
+    };
+};
+
+/**
+ * Broadcast an emoji reaction to the room
+ */
+export const sendReactionV2 = async (
+    roomCode: string,
+    emoji: string,
+    senderName?: string,
+    senderId?: string
+) => {
+    const code = roomCode.trim().toUpperCase();
+    const channelName = `reactions_${code}`;
+
+    let channel = reactionChannels.get(code);
+    if (!channel) {
+        channel = supabase.channel(channelName);
+        channel.subscribe();
+        reactionChannels.set(code, channel);
+    }
+
+    try {
+        await channel.send({
+            type: 'broadcast',
+            event: 'reaction',
+            payload: {
+                emoji,
+                senderName,
+                senderId,
+                timestamp: Date.now(),
+            },
+        });
+    } catch (e) {
+        console.warn('Failed to broadcast reaction:', e);
+    }
+};
+
+// ===== NUDGE PARTNER =====
+
+/**
+ * Sends a push "nudge" to the other member of the room.
+ * Looks up the partner's Expo push token via a secure RPC (caller must be a
+ * room member), then delivers through Expo's push service.
+ * Throws a user-friendly Error if the partner can't be reached.
+ */
+export const sendNudgeV2 = async (roomCode: string, fromName?: string): Promise<void> => {
+    const code = roomCode.trim().toUpperCase();
+
+    const { data, error } = await supabase.rpc('get_room_partner_push_token', {
+        p_room_code: code,
+    });
+    if (error) throw new Error(error.message || 'Could not reach your partner right now.');
+
+    const row = Array.isArray(data) ? data[0] : data;
+    const token: string | undefined = row?.partner_token;
+    const partnerName: string = row?.partner_name || 'your partner';
+
+    if (!token) {
+        throw new Error(`${partnerName} hasn't enabled notifications yet, so they can't be nudged.`);
+    }
+
+    const sender = fromName || 'Your love';
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: {
+            Accept: 'application/json',
+            'Accept-Encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            to: token,
+            sound: 'default',
+            title: 'Rumbala 💌',
+            body: `Your love is waiting for you in LDR Mode! 💌`,
+            data: { screen: 'ldr', roomCode: code, type: 'nudge', from: sender },
+            channelId: 'default',
+            priority: 'high',
+        }),
+    });
+
+    if (!response.ok) {
+        throw new Error('The nudge could not be delivered. Please try again in a moment.');
+    }
+};
+
 

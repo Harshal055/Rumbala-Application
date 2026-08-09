@@ -2,66 +2,77 @@ import React, { useState, useRef } from 'react';
 import {
     View, Text, Image, TouchableOpacity, StyleSheet,
     Dimensions, ScrollView, NativeScrollEvent, NativeSyntheticEvent,
-    StatusBar, TextInput, KeyboardAvoidingView, Platform
+    StatusBar, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import { useStore } from '../src/store/useStore';
-import Animated, { FadeInDown, FadeInUp, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../src/constants/glass';
 
 const { width } = Dimensions.get('window');
 
-const SLIDES = [
-    {
-        key: 'play',
-        title: 'Play ',
-        titleAccent: 'Together.',
-        subtitle: 'Spice up your connection with fun, romantic challenges and games.',
-        image: require('../assets/images/onboarding_couple_v2.png'),
-    },
-    {
-        key: 'safety',
-        title: 'Safe & ',
-        titleAccent: 'Private.',
-        subtitle: 'Your data is 100% encrypted and local to your device for total peace of mind.',
-        image: null,
-    },
-    {
-        key: 'steps',
-        title: 'How to Play',
-        subtitle: '3 Simple Steps to Fun',
-        image: require('../assets/icon.png'),
-    },
-    {
-        key: 'setup',
-        title: 'One Last ',
-        titleAccent: 'Step.',
-        subtitle: 'Tell us who is playing today!',
-        image: null,
-    }
+const BG_COLORS = ['#FEE2E2', '#FFEDD5', '#FEF3C7'];
+
+interface OptionItem {
+    id: string;
+    label: string;
+    desc?: string;
+    icon: any;
+    color?: string;
+}
+
+const GENDER_OPTIONS: OptionItem[] = [
+    { id: 'male', label: 'Male', desc: 'Identify as male', icon: 'male-outline', color: '#3B82F6' },
+    { id: 'female', label: 'Female', desc: 'Identify as female', icon: 'female-outline', color: '#EC4899' },
+    { id: 'non-binary', label: 'Non-binary / Other', desc: 'Gender-fluid or non-conforming', icon: 'transgender-outline', color: '#8B5CF6' },
+    { id: 'prefer_not_to_say', label: 'Prefer not to say', desc: 'Keep it private', icon: 'sparkles-outline', color: '#FF6B35' },
 ];
 
-const BG_COLORS = ['#FEE2E2', '#FFEDD5', '#FEF3C7'];
+const RELATIONSHIP_OPTIONS: OptionItem[] = [
+    { id: 'dating', label: 'In a Relationship / Dating', desc: 'Dating & building our romance', icon: 'heart', color: '#EC4899' },
+    { id: 'married', label: 'Married / Engaged', desc: 'Deepening our lifelong bond', icon: 'diamond', color: '#F59E0B' },
+    { id: 'ldr', label: 'Long Distance', desc: 'Connected across the miles', icon: 'airplane', color: '#3B82F6' },
+    { id: 'single', label: 'Single', desc: 'Looking for icebreakers & fun future dares', icon: 'sparkles', color: '#10B981' },
+    { id: 'complicated', label: 'It’s Complicated', desc: 'Exploring & casual play', icon: 'infinite', color: '#8B5CF6' },
+];
+
+const PURPOSE_OPTIONS: OptionItem[] = [
+    { id: 'spice', label: 'Spice Up Romance & Passion', desc: 'Intimate dares, sensual romance & heat', icon: 'flame', color: '#EF4444' },
+    { id: 'fun', label: 'Fun & Laughter', desc: 'Playful date night challenges & game party', icon: 'happy', color: '#F59E0B' },
+    { id: 'deep', label: 'Deep Connection & Bonding', desc: 'Deep conversation starters & emotional bonding', icon: 'chatbubbles', color: '#8B5CF6' },
+    { id: 'ldr', label: 'Stay Connected Long-Distance', desc: 'Real-time remote sessions & video dares', icon: 'globe', color: '#3B82F6' },
+    { id: 'fantasies', label: 'Explore Fantasies & New Things', desc: 'Break routines & try exciting new adventures', icon: 'rocket', color: '#EC4899' },
+];
 
 export default function OnboardingScreen() {
     const router = useRouter();
-    const { setHasSeenOnboarding, setPartners, partner1: storeP1, partner2: storeP2 } = useStore();
-    const [name1, setName1] = useState(storeP1 || '');
-    const [name2, setName2] = useState(storeP2 || '');
+    const { 
+        setHasSeenOnboarding, 
+        setOnboardingPreferences, 
+        setSelectedVibe, 
+        setMode,
+        gender: savedGender,
+        relationshipStatus: savedRel,
+        appPurpose: savedPurpose 
+    } = useStore();
+
     const [activeIndex, setActiveIndex] = useState(0);
     const scrollRef = useRef<ScrollView>(null);
 
-    const handleFinish = () => {
-        if (!name1.trim()) {
-            scrollRef.current?.scrollTo({ x: 3 * width, animated: true });
-            return;
-        }
-        setPartners(name1.trim(), name2.trim());
-        setHasSeenOnboarding(true);
-        router.replace('/login');
+    // Questionnaire local state
+    const [selectedGender, setSelectedGender] = useState<string>(savedGender || '');
+    const [selectedRel, setSelectedRel] = useState<string>(savedRel || '');
+    const [selectedPurpose, setSelectedPurpose] = useState<string>(savedPurpose || '');
+
+    const TOTAL_SLIDES = 5; // 0: Intro, 1: Privacy, 2: Gender, 3: Relation, 4: Purpose
+
+    const scrollToSlide = (index: number) => {
+        scrollRef.current?.scrollTo({ x: index * width, animated: true });
+        setActiveIndex(index);
     };
 
     const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -72,42 +83,95 @@ export default function OnboardingScreen() {
         }
     };
 
-    const nextSlide = () => {
-        if (activeIndex < SLIDES.length - 1) {
-            scrollRef.current?.scrollTo({ x: (activeIndex + 1) * width, animated: true });
+    const handleNext = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        if (activeIndex < TOTAL_SLIDES - 1) {
+            scrollToSlide(activeIndex + 1);
         } else {
-            handleFinish();
+            handleComplete();
         }
     };
+
+    const handleBack = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        if (activeIndex > 0) {
+            scrollToSlide(activeIndex - 1);
+        }
+    };
+
+    const handleComplete = () => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        
+        // Save preferences
+        setOnboardingPreferences({
+            gender: selectedGender || 'prefer_not_to_say',
+            relationshipStatus: selectedRel || 'dating',
+            appPurpose: selectedPurpose || 'fun',
+        });
+
+        // Tailor default vibe/mode based on purpose
+        if (selectedPurpose === 'spice') {
+            setSelectedVibe('spicy');
+        } else if (selectedPurpose === 'fun') {
+            setSelectedVibe('fun');
+        } else if (selectedPurpose === 'ldr' || selectedRel === 'ldr') {
+            setMode('ldr');
+            setSelectedVibe('romantic');
+        } else {
+            setSelectedVibe('romantic');
+        }
+
+        setHasSeenOnboarding(true);
+        router.replace('/login');
+    };
+
+    const isQuizStep = activeIndex >= 2;
+    const currentQuizStep = activeIndex - 1; // 1, 2, or 3
+    const canProceed = 
+        activeIndex === 0 || 
+        activeIndex === 1 || 
+        (activeIndex === 2 && Boolean(selectedGender)) ||
+        (activeIndex === 3 && Boolean(selectedRel)) ||
+        (activeIndex === 4 && Boolean(selectedPurpose));
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
             <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
-                
+
                 {/* Header */}
-                <Animated.View entering={FadeInDown.duration(500)} style={[styles.header, glassStyles.header]}>
-                    {activeIndex < 2 ? (
-                        <>
+                <Animated.View entering={FadeInDown.duration(400)} style={[styles.header, glassStyles.header]}>
+                    {isQuizStep ? (
+                        <View style={styles.quizHeaderRow}>
+                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
+                                <Ionicons name="arrow-back" size={20} color="#1a1a1a" />
+                            </TouchableOpacity>
+
+                            <View style={styles.stepIndicator}>
+                                <Text style={styles.stepBadgeText}>STEP {currentQuizStep} OF 3</Text>
+                                <View style={styles.progressBarTrack}>
+                                    <View style={[styles.progressBarFill, { width: `${(currentQuizStep / 3) * 100}%` }]} />
+                                </View>
+                            </View>
+
+                            <TouchableOpacity onPress={handleComplete} style={styles.skipBtn}>
+                                <Text style={styles.skipBtnText}>Skip</Text>
+                            </TouchableOpacity>
+                        </View>
+                    ) : (
+                        <View style={styles.introHeaderRow}>
                             <View style={styles.logoRow}>
                                 <Ionicons name="heart" size={24} color="#FF6B35" />
-                                <Text style={[styles.headerText, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
+                                <Text style={[styles.headerLogoText, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
                             </View>
-                            <TouchableOpacity style={[styles.notifBtn, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-                                <Ionicons name="notifications" size={20} color="#FF6B35" />
+                            <TouchableOpacity onPress={() => router.replace('/login')} style={styles.loginQuickLink}>
+                                <Text style={styles.loginQuickLinkText}>Log In</Text>
                             </TouchableOpacity>
-                        </>
-                    ) : (
-                        <View style={styles.headerCentered}>
-                            <TouchableOpacity onPress={() => scrollRef.current?.scrollTo({ x: 0, animated: true })} style={[styles.backBtn, glassStyles.container]}>
-                                <Ionicons name="arrow-back" size={22} color="#1a1a1a" />
-                            </TouchableOpacity>
-                            <Text style={[styles.headerTitle, { fontFamily: 'Pacifico_400Regular' }]}>How to Play</Text>
-                            <View style={{ width: 44 }} />
                         </View>
                     )}
                 </Animated.View>
 
+                {/* Content Slides */}
                 <ScrollView
                     ref={scrollRef}
                     horizontal
@@ -115,234 +179,349 @@ export default function OnboardingScreen() {
                     showsHorizontalScrollIndicator={false}
                     onScroll={handleScroll}
                     scrollEventThrottle={16}
+                    keyboardShouldPersistTaps="handled"
                     style={{ flex: 1 }}
                 >
-                    {/* SLIDE 1: INTRO */}
-                    <View style={[styles.slide, { width }]}>
-                        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.textSection}>
-                            <Text style={styles.title}>
-                                {SLIDES[0].title}
-                                <Text style={styles.titleAccent}>{SLIDES[0].titleAccent}</Text>
-                            </Text>
-                            <Text style={styles.subtitle}>{SLIDES[0].subtitle}</Text>
-                        </Animated.View>
-
-                        <Animated.View entering={FadeInUp.delay(300)} style={styles.imageCardContainer}>
-                            <View style={[styles.illustrationCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)' }]}>
-                                <Image source={SLIDES[0].image} style={styles.mainImage} resizeMode="contain" />
-                            </View>
-                        </Animated.View>
-
-                        <View style={styles.avatarRow}>
-                            <View style={[styles.avatar, glassStyles.container, { zIndex: 3, backgroundColor: '#FFD6C9' }]}><Ionicons name="person" size={20} color="#FF6B35" /></View>
-                            <View style={[styles.avatar, glassStyles.container, { left: -16, zIndex: 2, backgroundColor: '#FFE4DE' }]}><Ionicons name="person" size={20} color="#FFB8A1" /></View>
-                            <View style={[styles.avatarAdd, glassStyles.container, { left: -32, zIndex: 1, backgroundColor: '#FF6B35' }]}><Ionicons name="add" size={20} color="#fff" /></View>
-                        </View>
-
-                        <TouchableOpacity style={styles.primaryBtn} onPress={nextSlide} activeOpacity={0.85}>
-                            <Text style={styles.primaryBtnText}>Get Started</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity style={styles.secondaryBtn} onPress={handleFinish}>
-                            <Text style={styles.secondaryBtnText}>I already have an account</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* SLIDE 2: SAFETY & PRIVACY */}
+                    {/* SLIDE 0: INTRO */}
                     <View style={[styles.slide, { width }]}>
                         <Animated.View entering={FadeInDown.duration(600)} style={styles.textSection}>
                             <Text style={styles.title}>
-                                {SLIDES[1].title}
-                                <Text style={styles.titleAccent}>{SLIDES[1].titleAccent}</Text>
+                                Play <Text style={styles.titleAccent}>Together.</Text>
                             </Text>
-                            <Text style={styles.subtitle}>{SLIDES[1].subtitle}</Text>
+                            <Text style={styles.subtitle}>
+                                Spice up your connection with personalized romantic dares, challenges and games.
+                            </Text>
                         </Animated.View>
 
-                        <View style={styles.safetyContainer}>
-                            <Animated.View entering={FadeInUp.delay(100)} style={[styles.safetyCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)' }]}>
-                                <View style={[styles.safetyIcon, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-                                    <Ionicons name="shield-checkmark" size={32} color="#FF6B35" />
-                                </View>
-                                <Text style={styles.safetyTitle}>End-to-End Encrypted</Text>
-                                <Text style={styles.safetyDesc}>Your dares and chat messages are never readable by anyone else.</Text>
-                            </Animated.View>
-                            <Animated.View entering={FadeInUp.delay(200)} style={[styles.safetyCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)' }]}>
-                                <View style={[styles.safetyIcon, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-                                    <Ionicons name="location-outline" size={32} color="#FF6B35" />
-                                </View>
-                                <Text style={styles.safetyTitle}>100% Private</Text>
-                                <Text style={styles.safetyDesc}>No tracking, no selling your data. Just you and your partner.</Text>
-                            </Animated.View>
-                        </View>
-
-                        <TouchableOpacity style={styles.primaryBtn} onPress={nextSlide} activeOpacity={0.85}>
-                            <Text style={styles.primaryBtnText}>Next Step</Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* SLIDE 3: HOW TO PLAY */}
-                    <View style={[styles.slide, { width }]}>
-                        <Animated.View entering={FadeInDown.duration(600)} style={[styles.phoneImageContainer, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.4)' }]}>
-                            <Image source={SLIDES[2].image} style={styles.stepImage} resizeMode="contain" />
-                            <View style={styles.stepLabel}>
-                                <Text style={styles.stepLabelText}>GETTING STARTED</Text>
+                        <Animated.View entering={FadeInUp.delay(200)} style={styles.imageCardContainer}>
+                            <View style={[styles.illustrationCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.45)' }]}>
+                                <Image 
+                                    source={require('../assets/images/onboarding_couple_v2.png')} 
+                                    style={styles.mainImage} 
+                                    resizeMode="contain" 
+                                />
                             </View>
                         </Animated.View>
 
-                        <Text style={styles.slide3Title}>3 Simple Steps to Fun</Text>
+                        <View style={styles.footerActionContainer}>
+                            <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.85}>
+                                <Text style={styles.primaryBtnText}>Get Started</Text>
+                                <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
 
-                        <View style={styles.stepsContainer}>
-                            <StepItem icon="create-outline" title="Set your names & vibe" desc="Customize your profile and pick the intensity mode for tonight." isLast={false} />
-                            <StepItem icon="sync-outline" title="Connect with your partner" desc="Sync devices by scanning a QR code or entering a private session pin." isLast={false} />
-                            <StepItem icon="card-outline" title="Reveal cards and complete dares" desc="Take turns revealing challenges and start the ultimate gaming experience." isLast={true} />
+                            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/login')}>
+                                <Text style={styles.secondaryBtnText}>I already have an account</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+
+                    {/* SLIDE 1: PRIVACY & TRUST */}
+                    <View style={[styles.slide, { width }]}>
+                        <Animated.View entering={FadeInDown.duration(600)} style={styles.textSection}>
+                            <Text style={styles.title}>
+                                Safe & <Text style={styles.titleAccent}>Private.</Text>
+                            </Text>
+                            <Text style={styles.subtitle}>
+                                Built exclusively for couples. Your personal moments and answers stay private.
+                            </Text>
+                        </Animated.View>
+
+                        <View style={styles.cardsStack}>
+                            <Animated.View entering={FadeInUp.delay(100)} style={[styles.featureCard, glassStyles.container]}>
+                                <View style={[styles.featureIconWrap, { backgroundColor: 'rgba(255, 107, 53, 0.12)' }]}>
+                                    <Ionicons name="shield-checkmark" size={28} color="#FF6B35" />
+                                </View>
+                                <View style={styles.featureTextWrap}>
+                                    <Text style={styles.featureTitle}>End-to-End Encrypted</Text>
+                                    <Text style={styles.featureDesc}>Your card selections and private chats are never readable by third parties.</Text>
+                                </View>
+                            </Animated.View>
+
+                            <Animated.View entering={FadeInUp.delay(200)} style={[styles.featureCard, glassStyles.container]}>
+                                <View style={[styles.featureIconWrap, { backgroundColor: 'rgba(236, 72, 153, 0.12)' }]}>
+                                    <Ionicons name="lock-closed" size={28} color="#EC4899" />
+                                </View>
+                                <View style={styles.featureTextWrap}>
+                                    <Text style={styles.featureTitle}>100% Couple Confidential</Text>
+                                    <Text style={styles.featureDesc}>No intrusive ads, no selling personal data. Just intimate connection.</Text>
+                                </View>
+                            </Animated.View>
                         </View>
 
-                        <View style={{ flex: 1 }} />
+                        <View style={styles.footerActionContainer}>
+                            <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.85}>
+                                <Text style={styles.primaryBtnText}>Personalize My Experience</Text>
+                                <Ionicons name="sparkles" size={18} color="#fff" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
 
-                        <TouchableOpacity style={styles.primaryBtn} onPress={nextSlide} activeOpacity={0.85}>
-                            <View style={styles.btnContent}>
+                    {/* SLIDE 2: QUESTION 1 — GENDER */}
+                    <View style={[styles.slide, { width }]}>
+                        <Animated.View entering={FadeInDown.duration(500)} style={styles.quizTitleSection}>
+                            <Text style={styles.quizHeading}>What is your gender?</Text>
+                            <Text style={styles.quizSubheading}>Helps us tailor challenge phrasing and roles accurately.</Text>
+                        </Animated.View>
+
+                        <ScrollView style={styles.optionsList} contentContainerStyle={{ gap: 12, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+                            {GENDER_OPTIONS.map((opt) => {
+                                const isSelected = selectedGender === opt.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.id}
+                                        activeOpacity={0.8}
+                                        onPress={() => {
+                                            Haptics.selectionAsync().catch(() => {});
+                                            setSelectedGender(opt.id);
+                                        }}
+                                        style={[
+                                            styles.optionCard,
+                                            glassStyles.container,
+                                            isSelected && styles.optionCardActive
+                                        ]}
+                                    >
+                                        <View style={[styles.optionIconWrap, { backgroundColor: isSelected ? '#FF6B35' : 'rgba(0,0,0,0.05)' }]}>
+                                            <Ionicons name={opt.icon} size={22} color={isSelected ? '#fff' : (opt.color || '#333')} />
+                                        </View>
+                                        <View style={styles.optionContent}>
+                                            <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>{opt.label}</Text>
+                                            {opt.desc && <Text style={styles.optionDesc}>{opt.desc}</Text>}
+                                        </View>
+                                        <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
+                                            {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+
+                        <View style={styles.footerActionContainer}>
+                            <TouchableOpacity 
+                                style={[styles.primaryBtn, !selectedGender && styles.primaryBtnDisabled]} 
+                                onPress={handleNext} 
+                                disabled={!selectedGender}
+                                activeOpacity={0.85}
+                            >
                                 <Text style={styles.primaryBtnText}>Continue</Text>
-                                <Ionicons name="arrow-forward" size={24} color="#fff" style={{ marginLeft: 10 }} />
-                            </View>
-                        </TouchableOpacity>
-                        <Text style={styles.versionText}>Rumbala INSTRUCTIONS V1.0</Text>
+                                <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        </View>
                     </View>
 
-                    {/* SLIDE 4: SETUP NAMES */}
+                    {/* SLIDE 3: QUESTION 2 — RELATIONSHIP STATUS */}
                     <View style={[styles.slide, { width }]}>
-                        <Animated.View entering={FadeInDown.duration(600)} style={styles.textSection}>
-                            <Text style={styles.title}>
-                                One Last <Text style={styles.titleAccent}>Step.</Text>
-                            </Text>
-                            <Text style={styles.subtitle}>Enter your names to start Rumble!</Text>
+                        <Animated.View entering={FadeInDown.duration(500)} style={styles.quizTitleSection}>
+                            <Text style={styles.quizHeading}>Your Relationship Status</Text>
+                            <Text style={styles.quizSubheading}>We’ll customize card decks suited for where you are.</Text>
                         </Animated.View>
 
-                        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.setupContainer}>
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Your Name</Text>
-                                <View style={[styles.inputRow, glassStyles.container]}>
-                                    <Ionicons name="person-outline" size={18} color="#FF6B35" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="e.g. Harshal"
-                                        placeholderTextColor="#999"
-                                        value={name1}
-                                        onChangeText={setName1}
-                                        autoCorrect={false}
-                                    />
-                                </View>
-                            </View>
+                        <ScrollView style={styles.optionsList} contentContainerStyle={{ gap: 12, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+                            {RELATIONSHIP_OPTIONS.map((opt) => {
+                                const isSelected = selectedRel === opt.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.id}
+                                        activeOpacity={0.8}
+                                        onPress={() => {
+                                            Haptics.selectionAsync().catch(() => {});
+                                            setSelectedRel(opt.id);
+                                        }}
+                                        style={[
+                                            styles.optionCard,
+                                            glassStyles.container,
+                                            isSelected && styles.optionCardActive
+                                        ]}
+                                    >
+                                        <View style={[styles.optionIconWrap, { backgroundColor: isSelected ? '#FF6B35' : 'rgba(0,0,0,0.05)' }]}>
+                                            <Ionicons name={opt.icon} size={22} color={isSelected ? '#fff' : (opt.color || '#333')} />
+                                        </View>
+                                        <View style={styles.optionContent}>
+                                            <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>{opt.label}</Text>
+                                            {opt.desc && <Text style={styles.optionDesc}>{opt.desc}</Text>}
+                                        </View>
+                                        <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
+                                            {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Partner's Name</Text>
-                                <View style={[styles.inputRow, glassStyles.container]}>
-                                    <Ionicons name="heart-outline" size={18} color="#FF6B35" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="e.g. Priya"
-                                        placeholderTextColor="#999"
-                                        value={name2}
-                                        onChangeText={setName2}
-                                        autoCorrect={false}
-                                    />
-                                </View>
-                            </View>
-                        </KeyboardAvoidingView>
+                        <View style={styles.footerActionContainer}>
+                            <TouchableOpacity 
+                                style={[styles.primaryBtn, !selectedRel && styles.primaryBtnDisabled]} 
+                                onPress={handleNext} 
+                                disabled={!selectedRel}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.primaryBtnText}>Continue</Text>
+                                <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
 
-                        <View style={{ flex: 1 }} />
+                    {/* SLIDE 4: QUESTION 3 — MAIN PURPOSE / GOAL */}
+                    <View style={[styles.slide, { width }]}>
+                        <Animated.View entering={FadeInDown.duration(500)} style={styles.quizTitleSection}>
+                            <Text style={styles.quizHeading}>What is your main goal?</Text>
+                            <Text style={styles.quizSubheading}>What would you like to experience most in Rumbala?</Text>
+                        </Animated.View>
 
-                        <TouchableOpacity style={styles.primaryBtn} onPress={handleFinish} activeOpacity={0.85}>
-                            <View style={styles.btnContent}>
-                                <Text style={styles.primaryBtnText}>Let's Play</Text>
-                                <Ionicons name="play-circle" size={24} color="#fff" style={{ marginLeft: 10 }} />
-                            </View>
-                        </TouchableOpacity>
+                        <ScrollView style={styles.optionsList} contentContainerStyle={{ gap: 12, paddingBottom: 20 }} showsVerticalScrollIndicator={false}>
+                            {PURPOSE_OPTIONS.map((opt) => {
+                                const isSelected = selectedPurpose === opt.id;
+                                return (
+                                    <TouchableOpacity
+                                        key={opt.id}
+                                        activeOpacity={0.8}
+                                        onPress={() => {
+                                            Haptics.selectionAsync().catch(() => {});
+                                            setSelectedPurpose(opt.id);
+                                        }}
+                                        style={[
+                                            styles.optionCard,
+                                            glassStyles.container,
+                                            isSelected && styles.optionCardActive
+                                        ]}
+                                    >
+                                        <View style={[styles.optionIconWrap, { backgroundColor: isSelected ? '#FF6B35' : 'rgba(0,0,0,0.05)' }]}>
+                                            <Ionicons name={opt.icon} size={22} color={isSelected ? '#fff' : (opt.color || '#333')} />
+                                        </View>
+                                        <View style={styles.optionContent}>
+                                            <Text style={[styles.optionLabel, isSelected && styles.optionLabelActive]}>{opt.label}</Text>
+                                            {opt.desc && <Text style={styles.optionDesc}>{opt.desc}</Text>}
+                                        </View>
+                                        <View style={[styles.checkCircle, isSelected && styles.checkCircleActive]}>
+                                            {isSelected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </ScrollView>
+
+                        <View style={styles.footerActionContainer}>
+                            <TouchableOpacity 
+                                style={[styles.primaryBtn, !selectedPurpose && styles.primaryBtnDisabled]} 
+                                onPress={handleComplete} 
+                                disabled={!selectedPurpose}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.primaryBtnText}>Start Playing</Text>
+                                <Ionicons name="play-circle" size={22} color="#fff" style={{ marginLeft: 8 }} />
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </ScrollView>
 
-                {/* Pagination Dots */}
-                <View style={styles.pagination}>
-                    <View style={[styles.dot, glassStyles.container, activeIndex === 0 && styles.dotActive]} />
-                    <View style={[styles.dot, glassStyles.container, activeIndex === 1 && styles.dotActive]} />
-                    <View style={[styles.dot, glassStyles.container, activeIndex === 2 && styles.dotActive]} />
-                    <View style={[styles.dot, glassStyles.container, activeIndex === 3 && styles.dotActive]} />
+                {/* Bottom Pagination Dots */}
+                <View style={styles.paginationRow}>
+                    {Array.from({ length: TOTAL_SLIDES }).map((_, i) => (
+                        <View 
+                            key={i} 
+                            style={[
+                                styles.dot, 
+                                glassStyles.container, 
+                                activeIndex === i && styles.dotActive
+                            ]} 
+                        />
+                    ))}
                 </View>
             </SafeAreaView>
         </AnimatedBackground>
     );
 }
 
-function StepItem({ icon, title, desc, isLast }: { icon: string, title: string, desc: string, isLast: boolean }) {
-    return (
-        <View style={styles.stepItem}>
-            <View style={[styles.iconCircle, glassStyles.container, { backgroundColor: 'rgba(255, 107, 53, 0.1)' }]}>
-                <Ionicons name={icon as any} size={20} color="#FF6B35" />
-            </View>
-            <View style={styles.stepTextContainer}>
-                <Text style={styles.stepTitleTxt}>{title}</Text>
-                <Text style={styles.stepDescTxt}>{desc}</Text>
-            </View>
-            {!isLast && <View style={styles.verticalLine} />}
-        </View>
-    );
-}
-
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
-    header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-    headerCentered: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    
+    // Header
+    header: { paddingHorizontal: 20, paddingVertical: 10 },
+    introHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    quizHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
     logoRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-    headerText: { fontSize: 24, color: '#1a1a1a' },
-    headerTitle: { fontSize: 20, color: '#1a1a1a' },
-    notifBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-    backBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+    headerLogoText: { fontSize: 24, color: '#1a1a1a' },
+    loginQuickLink: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(255, 107, 53, 0.1)' },
+    loginQuickLinkText: { fontSize: 14, fontWeight: '700', color: '#FF6B35' },
+    
+    backBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center' },
+    stepIndicator: { flex: 1, alignItems: 'center' },
+    stepBadgeText: { fontSize: 11, fontWeight: '800', color: '#FF6B35', letterSpacing: 0.8, marginBottom: 4 },
+    progressBarTrack: { width: '80%', height: 4, borderRadius: 2, backgroundColor: 'rgba(0,0,0,0.06)', overflow: 'hidden' },
+    progressBarFill: { height: '100%', backgroundColor: '#FF6B35', borderRadius: 2 },
+    skipBtn: { paddingHorizontal: 12, paddingVertical: 6 },
+    skipBtnText: { fontSize: 13, fontWeight: '700', color: '#888' },
 
-    slide: { paddingHorizontal: 24, paddingBottom: 24 },
-    textSection: { alignItems: 'center', marginTop: 20, marginBottom: 16 },
-    title: { fontSize: 48, fontWeight: '900', color: '#1a1a1a', letterSpacing: -1.5, textAlign: 'center', lineHeight: 52 },
+    // Slide Layout
+    slide: { paddingHorizontal: 24, paddingBottom: 10, flex: 1, justifyContent: 'space-between' },
+    textSection: { alignItems: 'center', marginTop: 10, marginBottom: 12 },
+    title: { fontSize: 44, fontWeight: '900', color: '#1a1a1a', letterSpacing: -1.5, textAlign: 'center', lineHeight: 48 },
     titleAccent: { color: '#FF6B35' },
-    subtitle: { fontSize: 16, color: '#666', textAlign: 'center', lineHeight: 24, marginTop: 12, fontWeight: '600' },
+    subtitle: { fontSize: 15, color: '#666', textAlign: 'center', lineHeight: 22, marginTop: 8, fontWeight: '600', paddingHorizontal: 10 },
 
-    imageCardContainer: { width: '100%', height: 300, justifyContent: 'center', alignItems: 'center', marginVertical: 10 },
-    illustrationCard: { width: '100%', height: '100%', padding: 20, borderRadius: 32, justifyContent: 'center', alignItems: 'center' },
-    mainImage: { width: '100%', height: '100%', borderRadius: 24 },
+    imageCardContainer: { width: '100%', height: 280, justifyContent: 'center', alignItems: 'center', marginVertical: 8 },
+    illustrationCard: { width: '100%', height: '100%', padding: 16, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
+    mainImage: { width: '100%', height: '100%', borderRadius: 20 },
 
-    avatarRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginVertical: 24 },
-    avatar: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
-    avatarAdd: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
+    cardsStack: { flex: 1, gap: 14, justifyContent: 'center', marginVertical: 12 },
+    featureCard: { flexDirection: 'row', padding: 18, borderRadius: 22, alignItems: 'center', gap: 16, backgroundColor: 'rgba(255,255,255,0.5)' },
+    featureIconWrap: { width: 52, height: 52, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+    featureTextWrap: { flex: 1 },
+    featureTitle: { fontSize: 17, fontWeight: '800', color: '#1a1a1a', marginBottom: 4 },
+    featureDesc: { fontSize: 13, color: '#666', lineHeight: 18, fontWeight: '500' },
 
-    primaryBtn: { backgroundColor: '#FF6B35', width: '100%', paddingVertical: 18, borderRadius: 18, alignItems: 'center', shadowColor: 'rgba(255, 107, 53, 0.4)', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 10, elevation: 4 },
-    btnContent: { flexDirection: 'row', alignItems: 'center' },
-    primaryBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
-    secondaryBtn: { marginTop: 24, alignSelf: 'center' },
-    secondaryBtnText: { color: '#666', fontSize: 16, fontWeight: '700' },
+    // Questionnaire Styles
+    quizTitleSection: { marginTop: 10, marginBottom: 16, alignItems: 'center' },
+    quizHeading: { fontSize: 26, fontWeight: '900', color: '#1a1a1a', textAlign: 'center', letterSpacing: -0.5 },
+    quizSubheading: { fontSize: 14, color: '#666', textAlign: 'center', marginTop: 6, fontWeight: '600', paddingHorizontal: 12 },
+    optionsList: { flex: 1, marginVertical: 4 },
+    optionCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 20,
+        backgroundColor: 'rgba(255,255,255,0.5)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255,255,255,0.7)',
+    },
+    optionCardActive: {
+        borderColor: '#FF6B35',
+        backgroundColor: 'rgba(255, 240, 235, 0.85)',
+        shadowColor: 'rgba(255, 107, 53, 0.25)',
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 2,
+    },
+    optionIconWrap: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    optionContent: { flex: 1 },
+    optionLabel: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
+    optionLabelActive: { color: '#FF6B35' },
+    optionDesc: { fontSize: 12, color: '#777', fontWeight: '500', marginTop: 2, lineHeight: 16 },
+    checkCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: 'rgba(0,0,0,0.15)', justifyContent: 'center', alignItems: 'center', marginLeft: 8 },
+    checkCircleActive: { backgroundColor: '#FF6B35', borderColor: '#FF6B35' },
 
-    pagination: { flexDirection: 'row', justifyContent: 'center', gap: 10, paddingBottom: 30 },
-    dot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(0,0,0,0.1)' },
-    dotActive: { width: 32, backgroundColor: '#FF6B35' },
+    // Footers & Buttons
+    footerActionContainer: { width: '100%', alignItems: 'center', marginTop: 10 },
+    primaryBtn: { 
+        backgroundColor: '#FF6B35', 
+        width: '100%', 
+        paddingVertical: 16, 
+        borderRadius: 18, 
+        flexDirection: 'row', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        shadowColor: 'rgba(255, 107, 53, 0.4)', 
+        shadowOffset: { width: 0, height: 4 }, 
+        shadowOpacity: 0.25, 
+        shadowRadius: 10, 
+        elevation: 4 
+    },
+    primaryBtnDisabled: { opacity: 0.45 },
+    primaryBtnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
+    secondaryBtn: { marginTop: 14, alignSelf: 'center', paddingVertical: 4 },
+    secondaryBtnText: { color: '#666', fontSize: 15, fontWeight: '700' },
 
-    safetyContainer: { flex: 1, gap: 16, marginTop: 10, marginBottom: 20 },
-    safetyCard: { borderRadius: 24, padding: 24, alignItems: 'center' },
-    safetyIcon: { marginBottom: 16, width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    safetyTitle: { fontSize: 19, fontWeight: '800', color: '#1a1a1a', marginBottom: 6 },
-    safetyDesc: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, fontWeight: '500' },
-
-    phoneImageContainer: { width: '100%', height: 180, borderRadius: 28, overflow: 'hidden', padding: 20, marginBottom: 20 },
-    stepImage: { width: '100%', height: '100%' },
-    stepLabel: { position: 'absolute', bottom: 16, left: 16, backgroundColor: '#FF6B35', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-    stepLabelText: { color: '#fff', fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-    slide3Title: { fontSize: 32, fontWeight: '900', color: '#1a1a1a', marginBottom: 24, letterSpacing: -1 },
-    stepsContainer: { width: '100%', gap: 24 },
-    stepItem: { flexDirection: 'row', gap: 16, position: 'relative' },
-    iconCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', zIndex: 2 },
-    stepTextContainer: { flex: 1 },
-    stepTitleTxt: { fontSize: 17, fontWeight: '800', color: '#1a1a1a', marginBottom: 4 },
-    stepDescTxt: { fontSize: 14, color: '#666', lineHeight: 18, fontWeight: '500' },
-    verticalLine: { position: 'absolute', top: 44, left: 22, bottom: -24, width: 2, backgroundColor: 'rgba(255, 107, 53, 0.2)', zIndex: 1 },
-    versionText: { marginTop: 12, fontSize: 11, fontWeight: '800', color: '#bbb', textAlign: 'center' },
-    setupContainer: { flex: 1, gap: 20, marginTop: 20 },
-    inputGroup: { gap: 8 },
-    label: { fontSize: 14, fontWeight: '800', color: '#1a1a1a', marginLeft: 4 },
-    inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, gap: 12, backgroundColor: 'rgba(255,255,255,0.4)' },
-    input: { flex: 1, height: 48, fontSize: 16, color: '#1a1a1a', fontWeight: '600' },
+    // Pagination
+    paginationRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 12 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.12)' },
+    dotActive: { width: 24, backgroundColor: '#FF6B35' },
 });

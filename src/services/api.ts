@@ -123,7 +123,7 @@ export const loginV2 = async (email: string, password: string) => {
 export const postAuthSync = async (userId: string, email?: string) => {
     try {
         const { useStore } = await import('../store/useStore');
-        const { initRevenueCat, getCustomerInfo, checkProEntitlement } = await import('./revenueCatService');
+        const { initRevenueCat, getCustomerInfo, getProEntitlementDetails } = await import('./revenueCatService');
         
         const store = useStore.getState();
         
@@ -133,14 +133,18 @@ export const postAuthSync = async (userId: string, email?: string) => {
         // 2. Initialize RevenueCat
         await initRevenueCat(userId);
 
-        // 3. Verify Pro Status and Sync Data
+        // 3. Verify Pro Status from both RevenueCat & Supabase
         try {
             const ci = await getCustomerInfo();
-            const isReallyPro = checkProEntitlement(ci);
-            store.setIsPro(isReallyPro);
+            const rcPro = getProEntitlementDetails(ci);
+            if (rcPro.isPro) {
+                store.setIsPro(true, rcPro.expiresAt);
+                syncProStatusToBackend(userId, true, rcPro.expiresAt).catch(() => {});
+            }
         } catch (_) {}
 
-        // 4. Load backend data
+        // 4. Load backend data (which syncs Supabase profile and respects admin/promo pro status)
+        await store.syncWithSupabase();
         await store.loadCardsFromSupabase(userId);
         await store.loadScoresFromSupabase(userId);
         
@@ -206,7 +210,7 @@ export const ensureProfileExists = async (userId: string, email?: string) => {
 
 export const updateProfile = async (
     userId: string,
-    updates: { partner1?: string; partner2?: string; card_count?: number },
+    updates: { partner1?: string; partner2?: string; card_count?: number; vibe?: string },
 ) => {
     const { data, error } = await supabase
         .from('profiles')
@@ -216,6 +220,29 @@ export const updateProfile = async (
         .single();
     if (error) throw new Error(error.message);
     return data;
+};
+
+export const syncOnboardingPreferencesToSupabase = async (
+    userId: string,
+    prefs: { gender?: string | null; relationship_status?: string | null; app_purpose?: string | null; vibe?: string | null }
+) => {
+    try {
+        const metadataUpdates: Record<string, any> = {};
+        if (prefs.gender) metadataUpdates.gender = prefs.gender;
+        if (prefs.relationship_status) metadataUpdates.relationship_status = prefs.relationship_status;
+        if (prefs.app_purpose) metadataUpdates.app_purpose = prefs.app_purpose;
+        if (prefs.vibe) metadataUpdates.vibe = prefs.vibe;
+
+        if (Object.keys(metadataUpdates).length > 0) {
+            await supabase.auth.updateUser({ data: metadataUpdates });
+        }
+
+        if (prefs.vibe && userId) {
+            await supabase.from('profiles').update({ vibe: prefs.vibe }).eq('id', userId);
+        }
+    } catch (e) {
+        console.warn('Failed to sync onboarding preferences to Supabase:', e);
+    }
 };
 
 export const syncCardCount = async (userId: string, count: number) => {
@@ -338,19 +365,45 @@ export const joinRoom = async (roomCode: string, guestUserId: string, guestName:
     // caller actually supplied its code — effectively letting anyone hijack a
     // random active room. The RPC enforces the code match, active status, and
     // guest-slot checks server-side; base-table RLS is back to host/guest-only.
+    // 1. Try atomic RPC first
     const { data, error } = await supabase.rpc('join_room_by_code', {
         p_code: roomCode,
         p_guest_user_id: guestUserId,
         p_guest_name: guestName,
     });
 
+    if (!error && data) {
+        console.log('--- JOIN SUCCESS (RPC):', data?.code);
+        return data;
+    }
+
+    // 2. If RPC is missing from cache (PGRST202), fallback to direct room update
+    if (error && (error.code === 'PGRST202' || error.message?.includes('schema cache') || error.message?.includes('not found'))) {
+        console.warn('RPC not found, falling back to direct table update...');
+        const { data: updatedRoom, error: updateErr } = await supabase
+            .from('rooms')
+            .update({
+                guest_user_id: guestUserId,
+                guest_name: guestName,
+            })
+            .eq('code', roomCode)
+            .select()
+            .single();
+
+        if (updateErr) {
+            console.error('SUPABASE FALLBACK JOIN ERROR:', updateErr);
+            throw new Error(updateErr.message || 'Room not found or could not join.');
+        }
+
+        console.log('--- JOIN SUCCESS (Direct Fallback):', updatedRoom?.code);
+        return updatedRoom;
+    }
+
     if (error) {
         console.error('SUPABASE JOIN ERROR:', error);
-        // Surface the RPC's specific exception message (e.g. "Room is full.")
         throw new Error(error.message || 'Join failure');
     }
 
-    console.log('--- JOIN SUCCESS:', data?.code);
     return data;
 };
 
@@ -663,12 +716,239 @@ export const adminUpdateUserCards = async (userId: string, count: number) => {
     if (error) throw new Error(error.message);
 };
 
-export const adminGrantPro = async (userId: string, isPro: boolean) => {
-    const { error } = await supabase
+export interface ProStatusResult {
+    isActive: boolean;
+    isExpired: boolean;
+    remainingDays: number | null;
+    formattedExpiry: string | null;
+}
+
+export const checkProStatus = (
+    isPro?: boolean | null,
+    expiresAt?: string | null,
+): ProStatusResult => {
+    if (!isPro) {
+        return { isActive: false, isExpired: false, remainingDays: null, formattedExpiry: null };
+    }
+    if (!expiresAt) {
+        return { isActive: true, isExpired: false, remainingDays: null, formattedExpiry: 'Lifetime' };
+    }
+    const expTime = new Date(expiresAt).getTime();
+    if (isNaN(expTime)) {
+        return { isActive: true, isExpired: false, remainingDays: null, formattedExpiry: 'Lifetime' };
+    }
+    const now = Date.now();
+    if (expTime <= now) {
+        return {
+            isActive: false,
+            isExpired: true,
+            remainingDays: 0,
+            formattedExpiry: `Expired on ${new Date(expiresAt).toLocaleDateString()}`,
+        };
+    }
+    const remainingMs = expTime - now;
+    const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+    const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    
+    let label = '';
+    if (remainingDays >= 1) {
+        label = `${remainingDays}d ${remainingHours}h`;
+    } else {
+        const remainingMins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+        label = `${remainingHours}h ${remainingMins}m`;
+    }
+
+    return {
+        isActive: true,
+        isExpired: false,
+        remainingDays,
+        formattedExpiry: `Expires in ${label}`,
+    };
+};
+
+export const syncProStatusToBackend = async (userId: string, isPro: boolean, expiresAt?: string | null) => {
+    if (!userId) return;
+    const payload: { is_pro: boolean; pro_expires_at?: string | null; updated_at: string } = {
+        is_pro: isPro,
+        pro_expires_at: isPro ? (expiresAt !== undefined ? expiresAt : null) : null,
+        updated_at: new Date().toISOString(),
+    };
+
+    let { error } = await supabase
         .from('profiles')
-        .update({ is_pro: isPro })
+        .update(payload)
         .eq('id', userId);
+
+    if (error && error.message.includes('pro_expires_at')) {
+        await supabase
+            .from('profiles')
+            .update({ is_pro: isPro, updated_at: new Date().toISOString() })
+            .eq('id', userId);
+    }
+};
+
+export interface PromoRedemptionResult {
+    success: boolean;
+    message: string;
+    grantProDays?: number;
+    bonusCards?: number;
+    expiresAt?: string | null;
+    isLifetime?: boolean;
+    newCardCount?: number;
+}
+
+export const redeemPromoCode = async (userId: string, rawCode: string): Promise<PromoRedemptionResult> => {
+    if (!userId) throw new Error('You must be logged in to redeem a promo code.');
+    const code = (rawCode || '').trim().toUpperCase();
+    if (!code) throw new Error('Please enter a valid promo code.');
+
+    // 1. Fetch promo code from DB
+    const { data: promo, error } = await supabase
+        .from('promo_codes')
+        .select('*')
+        .ilike('code', code)
+        .single();
+
+    if (error || !promo) {
+        return { success: false, message: 'Invalid promo code. Please check and try again.' };
+    }
+
+    if (!promo.is_active) {
+        return { success: false, message: 'This promo code is no longer active.' };
+    }
+
+    if (promo.expires_at && new Date(promo.expires_at).getTime() < Date.now()) {
+        return { success: false, message: 'This promo code has expired.' };
+    }
+
+    if (promo.max_uses && promo.used_count >= promo.max_uses) {
+        return { success: false, message: 'This promo code has reached its maximum redemptions limit.' };
+    }
+
+    // 2. Fetch user profile
+    const { data: profile, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, is_pro, pro_expires_at, card_count')
+        .eq('id', userId)
+        .single();
+
+    if (pErr || !profile) {
+        throw new Error('User profile not found. Please try again.');
+    }
+
+    const grantProDays = promo.grant_pro_days || 0;
+    const bonusCards = promo.bonus_cards || 0;
+    let newExpiry: string | null = profile.pro_expires_at || null;
+    let isLifetime = false;
+
+    const profileUpdates: any = {
+        updated_at: new Date().toISOString(),
+    };
+
+    if (grantProDays > 0) {
+        if (grantProDays >= 9999) {
+            // Lifetime
+            isLifetime = true;
+            newExpiry = null;
+            profileUpdates.is_pro = true;
+            profileUpdates.pro_expires_at = null;
+        } else {
+            // Extend or set
+            let baseTime = Date.now();
+            if (profile.is_pro && profile.pro_expires_at) {
+                const currentExp = new Date(profile.pro_expires_at).getTime();
+                if (currentExp > baseTime) {
+                    baseTime = currentExp;
+                }
+            }
+            const expDate = new Date(baseTime + grantProDays * 24 * 60 * 60 * 1000);
+            newExpiry = expDate.toISOString();
+            profileUpdates.is_pro = true;
+            profileUpdates.pro_expires_at = newExpiry;
+        }
+    }
+
+    let nextCardCount = profile.card_count ?? 0;
+    if (bonusCards > 0) {
+        nextCardCount += bonusCards;
+        profileUpdates.card_count = nextCardCount;
+    }
+
+    // Update profile
+    const { error: uErr } = await supabase
+        .from('profiles')
+        .update(profileUpdates)
+        .eq('id', userId);
+
+    if (uErr) throw new Error(uErr.message);
+
+    // Increment promo code used_count
+    await supabase
+        .from('promo_codes')
+        .update({ used_count: (promo.used_count || 0) + 1 })
+        .eq('code', promo.code);
+
+    let successMsg = '🎉 Promo code applied successfully!';
+    if (isLifetime) {
+        successMsg = '👑 Congratulations! You received Lifetime Rumbala Pro with Unlimited Cards!';
+    } else if (grantProDays > 0 && bonusCards > 0) {
+        successMsg = `🎉 You unlocked ${grantProDays} Days of Rumbala Pro (Unlimited Cards) + ${bonusCards} Bonus Cards!`;
+    } else if (grantProDays > 0) {
+        successMsg = `🎉 You unlocked ${grantProDays} Days of Rumbala Pro with Unlimited Cards!`;
+    } else if (bonusCards > 0) {
+        successMsg = `🎁 You received ${bonusCards} Bonus Dare Cards!`;
+    }
+
+    return {
+        success: true,
+        message: successMsg,
+        grantProDays,
+        bonusCards,
+        expiresAt: newExpiry,
+        isLifetime,
+        newCardCount: nextCardCount,
+    };
+};
+
+export const adminGrantPro = async (userId: string, isPro: boolean, expiresAt?: string | null) => {
+    const payload: { is_pro: boolean; pro_expires_at?: string | null; updated_at: string } = {
+        is_pro: isPro,
+        pro_expires_at: isPro ? (expiresAt !== undefined ? expiresAt : null) : null,
+        updated_at: new Date().toISOString(),
+    };
+
+    // First attempt update with pro_expires_at
+    let { error } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', userId);
+
+    // Fallback if pro_expires_at column hasn't been migrated yet
+    if (error && error.message.includes('pro_expires_at')) {
+        const fallback = await supabase
+            .from('profiles')
+            .update({ is_pro: isPro, updated_at: new Date().toISOString() })
+            .eq('id', userId);
+        error = fallback.error;
+    }
+
     if (error) throw new Error(error.message);
+
+    // Broadcast live event to the user's active device immediately
+    try {
+        const channel = supabase.channel(`user-updates:${userId}`);
+        await channel.send({
+            type: 'broadcast',
+            event: 'user_updated',
+            payload: {
+                is_pro: isPro,
+                pro_expires_at: payload.pro_expires_at,
+            },
+        });
+        supabase.removeChannel(channel);
+    } catch (_) {
+        // Broadcast best-effort
+    }
 };
 
 export const adminGetUserStats = async (userId: string) => {
@@ -794,6 +1074,118 @@ export const adminUpdateCrashStatus = async (id: string, status: string) => {
     if (error) throw new Error(error.message);
 };
 
+// ─── REMOTE CONFIGS & KILL SWITCHES ─────────────────────────────────────────
+
+export interface AppRemoteConfigs {
+    feature_flags?: {
+        video_calls?: boolean;
+        spicy_category?: boolean;
+        shop_enabled?: boolean;
+        room_creation?: boolean;
+        promo_codes?: boolean;
+        ai_moderation?: boolean;
+        daily_rewards?: boolean;
+        secret_cards?: boolean;
+    };
+    maintenance_mode?: {
+        enabled?: boolean;
+        message?: string;
+    };
+    min_app_version?: {
+        android?: number;
+        ios?: number;
+        enforce?: boolean;
+        title?: string;
+        message?: string;
+        whats_new?: string[];
+    };
+    latest_app_version?: {
+        android?: number;
+        ios?: number;
+        title?: string;
+        message?: string;
+        whats_new?: string[];
+    };
+    // In-app update system. Compared against the device's native build number
+    // (Android versionCode / iOS build). Controlled live from the Admin Portal.
+    app_update?: {
+        enabled?: boolean;        // master switch for the whole update system
+        latest_android?: number;  // newest versionCode available on the Play Store
+        latest_ios?: number;      // newest build available on the App Store
+        min_android?: number;     // builds below this are force-updated (blocked)
+        min_ios?: number;
+        message?: string;         // shown for optional (soft) updates
+        force_message?: string;   // shown for mandatory (force) updates
+        android_url?: string;     // Play Store listing (falls back to package id)
+        ios_url?: string;         // App Store listing
+    };
+    [key: string]: any;
+}
+
+export const getAppRemoteConfigs = async (): Promise<AppRemoteConfigs> => {
+    try {
+        const { data, error } = await supabase
+            .from('app_remote_configs')
+            .select('*');
+
+        if (error) {
+            console.warn('[RemoteConfig] Fetch error:', error.message);
+            return {};
+        }
+
+        const configs: AppRemoteConfigs = {};
+        if (data) {
+            data.forEach((item) => {
+                configs[item.key] = item.value;
+            });
+        }
+        return configs;
+    } catch (e: any) {
+        console.warn('[RemoteConfig] Unexpected error:', e.message);
+        return {};
+    }
+};
+
+export const subscribeToRemoteConfigs = (onUpdate: (configs: AppRemoteConfigs) => void) => {
+    const channel = supabase
+        .channel('rumbala_remote_configs_live')
+        .on(
+            'broadcast',
+            { event: 'config_updated' },
+            (payload) => {
+                if (payload?.payload) {
+                    onUpdate(payload.payload as AppRemoteConfigs);
+                }
+            }
+        )
+        .on(
+            'postgres_changes',
+            { event: '*', schema: 'public', table: 'app_remote_configs' },
+            async () => {
+                const updated = await getAppRemoteConfigs();
+                onUpdate(updated);
+            }
+        )
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(channel);
+    };
+};
+
+export const broadcastRemoteConfigUpdate = async (configs: AppRemoteConfigs) => {
+    try {
+        const channel = supabase.channel('rumbala_remote_configs_live');
+        await channel.send({
+            type: 'broadcast',
+            event: 'config_updated',
+            payload: configs,
+        });
+    } catch (e: any) {
+        console.warn('[RemoteConfig Broadcast Error]:', e);
+    }
+};
+
 // ─── PUBLIC CMS (Dares) ─────────────────────────────────────────────────────
 
 export const getCmsCards = async () => {
@@ -804,5 +1196,7 @@ export const getCmsCards = async () => {
     if (error) throw new Error(error.message);
     return data;
 };
+
+
 
 

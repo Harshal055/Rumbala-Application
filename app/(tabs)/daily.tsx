@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
     View, Text, StyleSheet, TouchableOpacity, ScrollView,
-    TextInput, KeyboardAvoidingView, Platform, Dimensions, StatusBar
+    TextInput, KeyboardAvoidingView, Platform, Dimensions, StatusBar,
+    TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import Animated, { FadeInDown, FadeInUp, useSharedValue, useAnimatedStyle, withRepeat, withSequence, withTiming, withSpring, interpolate, Extrapolate } from 'react-native-reanimated';
 import { useStore } from '../../src/store/useStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -18,6 +20,7 @@ const { width } = Dimensions.get('window');
 const BG_COLORS = ['#FFF8F1', '#FFE4E1', '#FFF0F5']; // Warm and romantic daily base
 
 export default function DailyRetentionScreen() {
+    const router = useRouter();
     const { 
         streak, 
         dailyQuestion, 
@@ -41,7 +44,7 @@ export default function DailyRetentionScreen() {
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
-        let interval: NodeJS.Timeout;
+        let interval: any;
         if (!!dailyQuestion.myResponse && !dailyQuestion.partnerResponse) {
             refreshDailyResponses(); 
             interval = setInterval(() => {
@@ -111,17 +114,30 @@ export default function DailyRetentionScreen() {
                         <TouchableOpacity 
                             style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]} 
                             activeOpacity={0.8} 
-                            onPress={() => useStore.getState().hydrate()}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(tabs)/shop');
+                            }}
                         >
-                            <Ionicons name={isPro ? "diamond" : "albums-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
+                            <Ionicons name={isPro ? "diamond" : "bag-handle-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
                             <Text style={[styles.cardPillText, isPro && styles.proCardPillText]}>
-                                {isPro ? 'Pro Active' : cardCount}
+                                {isPro ? 'Pro Active' : `${cardCount} cards`}
                             </Text>
                         </TouchableOpacity>
                     </View>
                 </Animated.View>
                 
-                <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+                <KeyboardAvoidingView 
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                    style={{ flex: 1 }}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+                >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView 
+                            contentContainerStyle={styles.scroll} 
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                        >
                     {/* ── Streak Header ── */}
                     <Animated.View 
                         entering={FadeInDown.delay(200).duration(800)} 
@@ -247,7 +263,9 @@ export default function DailyRetentionScreen() {
                             />
                         </View>
                     </View>
-                </ScrollView>
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
+                </KeyboardAvoidingView>
             </SafeAreaView>
         </AnimatedBackground>
     );

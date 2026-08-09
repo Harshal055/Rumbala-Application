@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity,
     KeyboardAvoidingView, Platform, Alert, ScrollView, StyleSheet, StatusBar,
-    Dimensions
+    Dimensions, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
@@ -54,16 +54,30 @@ export default function WelcomeScreen() {
         }
     };
 
+    const handleBack = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (router.canGoBack()) router.back();
+        else router.replace('/onboarding');
+    };
+
     return (
         <AnimatedBackground colors={BG_COLORS}>
             <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
                 <StatusBar barStyle="light-content" />
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <ScrollView
-                        contentContainerStyle={styles.scroll}
-                        keyboardShouldPersistTaps="handled"
-                        showsVerticalScrollIndicator={false}
-                    >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView
+                            contentContainerStyle={styles.scroll}
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator={false}
+                        >
+                        {/* Top Nav */}
+                        <Animated.View entering={FadeInDown.duration(400)} style={styles.topNav}>
+                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                                <Ionicons name="arrow-back" size={22} color="#fff" />
+                            </TouchableOpacity>
+                        </Animated.View>
+
                         {/* Logo area */}
                         <Animated.View 
                             entering={FadeInDown.delay(100).duration(600)} 
@@ -168,8 +182,9 @@ export default function WelcomeScreen() {
                             </View>
                         </Animated.View>
 
-                        <View style={{ height: 60 }} />
-                    </ScrollView>
+                            <View style={{ height: 60 }} />
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
                 </KeyboardAvoidingView>
             </SafeAreaView>
         </AnimatedBackground>
@@ -180,6 +195,9 @@ const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
     scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 40, alignItems: 'center' },
     
+    topNav: { width: '100%', marginBottom: 12, alignItems: 'flex-start' },
+    backBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+
     logoSection: { alignItems: 'center', marginBottom: 32 },
     logoCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
     brandName: { fontFamily: 'Pacifico_400Regular', fontSize: 48, color: '#fff', letterSpacing: 0.5, lineHeight: 60 },

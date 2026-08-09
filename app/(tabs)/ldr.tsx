@@ -2,7 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, TouchableOpacity, StyleSheet,
     Alert, Share, StatusBar, ScrollView,
-    ActivityIndicator, useWindowDimensions
+    ActivityIndicator, useWindowDimensions,
+    KeyboardAvoidingView, Platform, TouchableWithoutFeedback,
+    Keyboard, TextInput, AppState
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,49 +22,112 @@ import { useShallow } from 'zustand/react/shallow';
 import {
     createLdrRoomV2, joinLdrRoomV2, subscribeToRoomV2,
     syncDrawnCardV2, updateRoomScoreV2, clearRoomCardV2,
-    RoomData, sendChatMessageV2, subscribeToChatV2, getRoomDataV2, getChatMessagesV2
+    RoomData, sendChatMessageV2, subscribeToChatV2, getRoomDataV2, getChatMessagesV2,
+    subscribeToReactionsV2, sendReactionV2, VideoReactionEvent
 } from '../../src/services/roomApi';
 import { CARDS, DareCard, CardType } from '../../src/constants/cards';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { TextInput } from 'react-native';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
+import { FloatingReactionOverlay, ReactionParticle } from '../../src/components/FloatingReactionOverlay';
 import { glassStyles, glassTokens } from '../../src/constants/glass';
 import PaywallModal from '../../src/components/PaywallModal';
-import { purchasePackage } from '../../src/services/revenueCatService';
+import CameraModal from '../../src/components/CameraModal';
+import { purchasePackage, getCustomerInfo, getProEntitlementDetails } from '../../src/services/revenueCatService';
 import * as AgoraModule from 'react-native-agora';
-import UIKitModule from 'agora-rn-uikit';
 
 const AGORA_APP_ID = process.env.EXPO_PUBLIC_AGORA_APP_ID || ''; 
 
 
 const BG_COLORS = ['#F5F3FF', '#EDE9F8', '#FDFCFB']; // Techy romantic LDR base
 
-// ── Timer Component ──
+// ── Romantic Animated Dare Timer ──
+// A beating heart that pulses faster as time runs out, a depleting glow track,
+// and a colour shift from warm orange to hot red in the final 10 seconds.
 function DareTimer({ seconds }: { seconds: number }) {
-    const [remaining, setRemaining] = useState(seconds);
+    const total = seconds > 0 ? seconds : 60;
+    const [remaining, setRemaining] = useState(total);
+
+    const progress = useSharedValue(1); // 1 → 0 over the full duration
+    const beat = useSharedValue(1);     // heart scale pulse
+
+    // Countdown + depleting track
     useEffect(() => {
-        setRemaining(seconds);
+        setRemaining(total);
+        progress.value = 1;
+        progress.value = withTiming(0, { duration: total * 1000, easing: Easing.linear });
         const interval = setInterval(() => {
-            setRemaining((prev: number) => (prev > 0 ? prev - 1 : 0));
+            setRemaining((prev) => (prev > 0 ? prev - 1 : 0));
         }, 1000);
-        return () => clearInterval(interval);
-    }, [seconds]);
+        return () => {
+            clearInterval(interval);
+            cancelAnimation(progress);
+        };
+    }, [total]);
+
     const isLow = remaining <= 10;
+    const isCritical = remaining <= 5;
+
+    // Heartbeat — speeds up as the clock winds down
+    useEffect(() => {
+        const period = isCritical ? 320 : isLow ? 520 : 820;
+        cancelAnimation(beat);
+        beat.value = 1;
+        beat.value = withRepeat(
+            withSequence(
+                withTiming(1.28, { duration: period / 2, easing: Easing.out(Easing.quad) }),
+                withTiming(1.0, { duration: period / 2, easing: Easing.in(Easing.quad) }),
+            ),
+            -1,
+            false,
+        );
+        return () => cancelAnimation(beat);
+    }, [isLow, isCritical]);
+
+    const heartStyle = useAnimatedStyle(() => ({ transform: [{ scale: beat.value }] }));
+    const trackStyle = useAnimatedStyle(() => ({ width: `${Math.max(0, progress.value) * 100}%` }));
+
+    const accent = isCritical ? '#FF2D55' : isLow ? '#FF4444' : '#FF6B35';
+
     return (
-        <View style={[tt.wrap, isLow && tt.wrapRed, !isLow && glassStyles.container]}>
-            <Ionicons name="timer-outline" size={14} color={isLow ? '#fff' : '#FF6B35'} />
-            <Text style={[tt.text, isLow && tt.textWhite]}>
-                {String(Math.floor(remaining / 60)).padStart(2, '0')}:{String(remaining % 60).padStart(2, '0')}
-            </Text>
+        <View style={[tt.wrap, glassStyles.container, isLow && tt.wrapLow, { shadowColor: accent }]}>
+            <View style={tt.row}>
+                <Animated.View style={heartStyle}>
+                    <Ionicons name="heart" size={15} color={accent} />
+                </Animated.View>
+                <Text style={[tt.text, { color: accent }]}>
+                    {String(Math.floor(remaining / 60)).padStart(2, '0')}:{String(remaining % 60).padStart(2, '0')}
+                </Text>
+            </View>
+            <View style={tt.trackBg}>
+                <Animated.View style={[tt.trackFill, trackStyle, { backgroundColor: accent }]} />
+            </View>
         </View>
     );
 }
 
 const tt = StyleSheet.create({
-    wrap: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5 },
-    wrapRed: { backgroundColor: '#FF4444' },
-    text: { fontSize: 14, fontWeight: '800', color: '#FF6B35', fontVariant: ['tabular-nums'] },
-    textWhite: { color: '#fff' },
+    wrap: {
+        borderRadius: 16,
+        paddingHorizontal: 12,
+        paddingTop: 6,
+        paddingBottom: 7,
+        minWidth: 88,
+        // soft romantic glow (shadowColor set dynamically to the accent)
+        shadowOpacity: 0.55,
+        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 0 },
+        elevation: 4,
+    },
+    wrapLow: { shadowOpacity: 0.9, shadowRadius: 12 },
+    row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, marginBottom: 5 },
+    text: { fontSize: 15, fontWeight: '800', fontVariant: ['tabular-nums'], letterSpacing: 0.5 },
+    trackBg: {
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: 'rgba(255,107,53,0.15)',
+        overflow: 'hidden',
+    },
+    trackFill: { height: '100%', borderRadius: 2 },
 });
 
 // ── Live Partner Avatar (Agora Remote Stream) ──
@@ -232,7 +297,8 @@ export default function LdrScreen() {
     const {
         partner1, partner2, setPartner1, setPartner2,
         roomId, setRoomId, setIsHost, isHost,
-        cardCount, setCardCount, addHistoryEntry, addPoint, userId, isPro, showAlert, setMode
+        cardCount, setCardCount, addHistoryEntry, addPoint, userId, isPro, showAlert, setMode,
+        remoteConfigs
     } = useStore(useShallow(state => ({
         partner1: state.partner1,
         partner2: state.partner2,
@@ -252,6 +318,7 @@ export default function LdrScreen() {
         setMode: state.setMode,
         selectedIntensity: state.selectedIntensity,
         setSelectedIntensity: state.setSelectedIntensity,
+        remoteConfigs: state.remoteConfigs,
     })));
 
     const router = useRouter();
@@ -271,6 +338,7 @@ export default function LdrScreen() {
     const [roomType, setRoomType] = useState<'video' | 'normal'>('video');
     const [selectedLdrVibe, setSelectedLdrVibe] = useState<CardType | 'all'>('all');
     const [showPaywall, setShowPaywall] = useState(false);
+    const [showCamera, setShowCamera] = useState(false);
 
     const activeCard: DareCard | null = roomData?.current_card ?? null;
     const partnerConnected = !!roomData?.guest_user_id;
@@ -278,7 +346,6 @@ export default function LdrScreen() {
     const engine = useRef<any>(null);
     const [localUid, setLocalUid] = useState<number | null>(null);
     const [remoteUid, setRemoteUid] = useState<number | null>(null);
-    const [useCustomUI, setUseCustomUI] = useState(true);
     const [isJoined, setIsJoined] = useState(false);
     const isAgoraInitializing = useRef(false);
     const isMutedRef = useRef(false);
@@ -354,10 +421,66 @@ export default function LdrScreen() {
         if (partnerName && partnerName !== partner2) setPartner2(partnerName);
     }, [roomData?.host_name, roomData?.guest_name, roomData?.host_user_id, roomData?.guest_user_id, userId, partner1, partner2, setPartner1, setPartner2]);
 
+    const [reactions, setReactions] = useState<ReactionParticle[]>([]);
+
+    // ── Nudge Partner ──
+    const [nudgeCooldown, setNudgeCooldown] = useState(0); // seconds remaining
+    useEffect(() => {
+        if (nudgeCooldown <= 0) return;
+        const t = setInterval(() => setNudgeCooldown((s) => (s > 0 ? s - 1 : 0)), 1000);
+        return () => clearInterval(t);
+    }, [nudgeCooldown]);
+
+    const handleNudge = async () => {
+        if (nudgeCooldown > 0 || !roomId) return;
+        if (!partnerConnected) {
+            showAlert('No partner yet', 'Wait for your partner to join the room, then you can nudge them. 💌');
+            return;
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        setNudgeCooldown(30); // prevent spamming
+        try {
+            const { sendNudgeV2 } = await import('../../src/services/roomApi');
+            await sendNudgeV2(roomId, partner1 || 'Your love');
+            showAlert('Nudge sent 💌', `We let ${partner2 || 'your partner'} know their love is waiting!`);
+        } catch (e: any) {
+            setNudgeCooldown(0); // let them retry on failure
+            showAlert('Could not nudge', e?.message || 'Please try again in a moment.');
+        }
+    };
+
+    const handleTriggerReaction = (emoji: string) => {
+        const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+        const startX = 20 + Math.floor(Math.random() * 60);
+
+        setReactions((prev) => [...prev.slice(-15), { id, emoji, senderName: partner1 || 'You', startX }]);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+
+        if (roomId) {
+            sendReactionV2(roomId, emoji, partner1 || 'Partner', userId || undefined);
+        }
+    };
+
+    const handleParticleComplete = (particleId: string) => {
+        setReactions((prev) => prev.filter((p) => p.id !== particleId));
+    };
+
     useEffect(() => {
         if (!roomId || !isRoomValidated) return;
 
         const unsubRoom = subscribeToRoomV2(roomId, (data: RoomData) => {
+            if (!data || data.is_active === false) {
+                console.log('--- Room ended or inactive. Cleaning up video call...');
+                leaveAgora();
+                setRoomId(null);
+                setRoomData(null);
+                setGeneratedCode(null);
+                setIsWaiting(false);
+                setIsRoomValidated(false);
+                setIsValidatingRoom(false);
+                showAlert('Call Ended', 'The video call session has ended.');
+                return;
+            }
             setRoomData(data);
             setRoomType(data.room_type || 'video');
             if (data.guest_user_id) {
@@ -367,12 +490,19 @@ export default function LdrScreen() {
         const unsubChat = subscribeToChatV2(roomId, (msgs: any[]) => {
             setMessages(msgs);
         });
+        const unsubReactions = subscribeToReactionsV2(roomId, (evt: VideoReactionEvent) => {
+            const id = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const startX = 20 + Math.floor(Math.random() * 60);
+            setReactions((prev) => [...prev.slice(-15), { id, emoji: evt.emoji, senderName: evt.senderName || partner2 || 'Partner', startX }]);
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        });
 
         return () => {
             unsubRoom();
             unsubChat();
+            unsubReactions();
         };
-    }, [roomId, isRoomValidated]);
+    }, [roomId, isRoomValidated, partner2]);
 
     const ensureMediaPermissions = async () => {
         const { Camera } = await import('expo-camera');
@@ -542,8 +672,14 @@ export default function LdrScreen() {
 
     const leaveAgora = () => {
         if (engine.current) {
-            engine.current.leaveChannel();
-            engine.current.release();
+            try {
+                engine.current.stopPreview?.();
+                engine.current.leaveChannel?.();
+                engine.current.unregisterEventHandler?.();
+                engine.current.release?.();
+            } catch (e) {
+                console.warn('--- AGORA: Error during leaveAgora cleanup:', e);
+            }
             engine.current = null;
             setIsJoined(false);
             setRemoteUid(null);
@@ -556,20 +692,51 @@ export default function LdrScreen() {
 
     useEffect(() => {
         if (engine.current && isJoined) {
-            engine.current.enableLocalAudio(!isMuted);
-            engine.current.muteLocalAudioStream(isMuted);
+            try {
+                engine.current.enableLocalAudio(!isMuted);
+                engine.current.muteLocalAudioStream(isMuted);
+            } catch {}
         }
     }, [isMuted, isJoined]);
 
     useEffect(() => {
         if (engine.current && isJoined) {
-            engine.current.enableLocalVideo(isCameraOn);
-            engine.current.muteLocalVideoStream(!isCameraOn);
+            try {
+                engine.current.enableLocalVideo(isCameraOn);
+                engine.current.muteLocalVideoStream(!isCameraOn);
+            } catch {}
         }
     }, [isCameraOn, isJoined]);
 
+    useEffect(() => {
+        const sub = AppState.addEventListener('change', (nextState) => {
+            if (nextState === 'background' || nextState === 'inactive') {
+                if (engine.current && isJoined) {
+                    try {
+                        engine.current.muteLocalVideoStream?.(true);
+                    } catch {}
+                }
+            } else if (nextState === 'active') {
+                if (engine.current && isJoined) {
+                    try {
+                        engine.current.muteLocalVideoStream?.(!isCameraOnRef.current);
+                    } catch {}
+                }
+            }
+        });
+        return () => sub.remove();
+    }, [isJoined]);
+
     const handleCreateRoom = async () => {
         if (!userId) { showAlert('Login Required', 'Please log in first to create a room.'); return; }
+        if (remoteConfigs?.feature_flags?.room_creation === false) {
+            showAlert('Room Creation Paused', 'LDR room creation is temporarily paused for scheduled maintenance.');
+            return;
+        }
+        if (roomType === 'video' && remoteConfigs?.feature_flags?.video_calls === false) {
+            showAlert('Video Calls Paused', 'Video calling is temporarily unavailable. Please use Text Mode.');
+            return;
+        }
         if (!isPro && roomType === 'video') {
             setShowPaywall(true); 
             return; 
@@ -578,6 +745,8 @@ export default function LdrScreen() {
         setLoading(true);
         try {
             const code = await createLdrRoomV2(userId, partner1 || 'Player 1', roomType);
+            // Ensure this player is reachable for partner "nudges".
+            import('../../src/services/notificationService').then(m => m.registerPushTokenAsync(userId)).catch(() => {});
             setGeneratedCode(code);
             setIsWaiting(true);
             setRoomId(code);
@@ -598,7 +767,9 @@ export default function LdrScreen() {
         setLoading(true);
         try {
             await joinLdrRoomV2(code, userId, partner1 || 'Guest');
-            setRoomId(code); 
+            // Ensure this player is reachable for partner "nudges".
+            import('../../src/services/notificationService').then(m => m.registerPushTokenAsync(userId)).catch(() => {});
+            setRoomId(code);
             setIsHost(false); 
             setMode('ldr');
             setIsRoomValidated(true);
@@ -637,16 +808,23 @@ export default function LdrScreen() {
             showAlert('Not Your Turn', `Please wait for ${partner2 || 'partner'} to finish their dare.`);
             return;
         }
-        if (!isPro && cardCount <= 0) { showAlert('No Cards', 'Buy more cards from the Shop to continue!'); return; }
+        const store = useStore.getState();
+        if (!store.isPro && store.cardCount <= 0) { 
+            showAlert('Out of Cards', 'Head to the Shop to get more cards or unlock Pro for unlimited access!', [
+                { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
+                { text: 'Cancel', style: 'cancel' }
+            ]); 
+            return; 
+        }
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-        // Bug Fix: Pass vibeFilter correctly so drawCard respects both type=ldr AND vibe
-        // When selectedLdrVibe is 'all', pass null so drawCard uses mode='ldr' logic (type=ldr, any vibe)
-        // When selectedLdrVibe is a specific vibe like 'fun'/'romantic'/'spicy', pass it so vibe is also filtered
         const vibeArg = selectedLdrVibe === 'all' ? null : selectedLdrVibe;
-        const card = useStore.getState().drawCard(vibeArg);
+        let card = store.drawCard(vibeArg);
         if (!card) {
-            showAlert('Wait!', 'Could not draw a card. Make sure you have enough cards in your inventory!');
+            card = store.drawCard('ldr');
+        }
+        if (!card) {
+            showAlert('Wait!', store.isPro ? 'Dare cards are loading. Please tap Draw again.' : 'Could not draw a card. Make sure you have enough cards in your inventory!');
             return;
         }
         try {
@@ -681,11 +859,33 @@ export default function LdrScreen() {
         setTimeout(() => setShowConfetti(false), 3000);
     };
 
+    const handlePhotoTaken = async (uri: string) => {
+        setShowCamera(false);
+        if (!activeCard || !roomId || !userId || !roomData) return;
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setShowConfetti(true);
+        try {
+            const actingAsHost = roomData.host_user_id === userId;
+            const h = (roomData.host_score ?? 0) + (actingAsHost ? 1 : 0);
+            const g = (roomData.guest_score ?? 0) + (!actingAsHost ? 1 : 0);
+            const nextTurnId = actingAsHost ? roomData.guest_user_id : roomData.host_user_id;
+            if (nextTurnId) { await updateRoomScoreV2(roomId, h, g, nextTurnId); }
+            else { await updateRoomScoreV2(roomId, h, g); }
+            await clearRoomCardV2(roomId);
+            if (roomData) setRoomData({ ...roomData, current_card: null, host_score: h, guest_score: g, current_turn_user_id: nextTurnId || roomData.current_turn_user_id });
+            addPoint('both');
+            addHistoryEntry({ id: Date.now().toString(), date: new Date().toISOString(), card: activeCard, winner: 'both', proofUri: uri });
+            showAlert('Proof Captured! 📸', 'Photo saved to your Couple Memories history!');
+        } catch {
+            showAlert('Update Failed', 'Could not sync score update. Please try again.');
+        }
+        setTimeout(() => setShowConfetti(false), 3000);
+    };
+
     const handleSkip = async () => {
         if (!roomId || !userId) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         try { 
-            useStore.getState().drawCard();
             await clearRoomCardV2(roomId); 
             if (roomData) setRoomData({ ...roomData, current_card: null });
         } catch (e) { console.warn('Failed to skip dare:', e); }
@@ -701,23 +901,26 @@ export default function LdrScreen() {
         const performLeave = async () => {
             setLoading(true);
             try {
-                // Try to mark as inactive in DB if host
-                if (isHost && roomId) {
+                if (roomId) {
                     const { supabase } = await import('../../src/services/supabase');
-                    await supabase.from('rooms').update({ is_active: false }).eq('code', roomId);
+                    if (isHost) {
+                        await supabase.from('rooms').update({ is_active: false }).eq('code', roomId);
+                    } else {
+                        await supabase.from('rooms').update({ guest_user_id: null, guest_name: null, is_active: false }).eq('code', roomId);
+                    }
                 }
+            } catch (e) {
+                console.warn('--- Error ending room in backend:', e);
+            } finally {
+                leaveAgora();
                 setRoomId(null); 
                 setRoomData(null); 
                 setGeneratedCode(null); 
                 setIsWaiting(false);
                 setIsRoomValidated(false);
                 setIsValidatingRoom(false);
-                leaveAgora();
-            } catch (e) {
-                setRoomId(null); // Fallback: clear local state regardless
-                setIsRoomValidated(false);
-                setIsValidatingRoom(false);
-            } finally { setLoading(false); }
+                setLoading(false);
+            }
         };
 
         if (skipConfirm) {
@@ -726,9 +929,9 @@ export default function LdrScreen() {
         }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        showAlert('Leave Session', 'Are you sure you want to end this LDR session?', [
+        showAlert('End Session', 'Are you sure you want to leave and end this video call session?', [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Leave', style: 'destructive', onPress: performLeave },
+            { text: 'End Call', style: 'destructive', onPress: performLeave },
         ]);
     };
 
@@ -736,9 +939,23 @@ export default function LdrScreen() {
         try {
             const result = await purchasePackage(pkg);
             if (result.success) {
-                useStore.getState().setIsPro(true);
+                const info = await getCustomerInfo();
+                const proDetails = getProEntitlementDetails(info);
+                const activePro = proDetails.isPro || Boolean(pkg?.isMock) || __DEV__;
+                const store = useStore.getState();
+                store.setIsPro(activePro, proDetails.expiresAt);
+                if (activePro && store.userId) {
+                    const api = await import('../../src/services/api');
+                    api.syncProStatusToBackend(store.userId, true, proDetails.expiresAt).catch(() => {});
+                }
                 setShowPaywall(false);
-                showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.');
+                if (activePro) {
+                    showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.');
+                } else {
+                    showAlert('Purchase Pending', 'Your purchase is complete, but Pro is still syncing. Please reopen the app or tap Restore.');
+                }
+            } else if (result.error && result.error !== 'Purchase cancelled') {
+                showAlert('Purchase Failed', result.error);
             }
         } catch (e) {
             console.warn('Purchase failed from popup', e);
@@ -775,11 +992,46 @@ export default function LdrScreen() {
                 <SafeAreaView style={styles.setupRoot} edges={['top']}>
                     <StatusBar barStyle="dark-content" />
                     <Animated.View entering={FadeInDown.duration(500)} style={[styles.navBar, glassStyles.header]}>
-                        <View style={{ width: 40 }} />
+                        <TouchableOpacity
+                            style={[styles.backBtn, glassStyles.container]}
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                if (router.canGoBack()) {
+                                    router.back();
+                                } else {
+                                    router.replace('/(tabs)');
+                                }
+                            }}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="arrow-back" size={22} color="#1a1a1a" />
+                        </TouchableOpacity>
                         <Text style={styles.navTitle}>LDR Mode</Text>
-                        <View style={{ width: 40 }} />
+                        <TouchableOpacity 
+                            style={[styles.cardPill, isPro && styles.proCardPill, !isPro && glassStyles.container]} 
+                            activeOpacity={0.8} 
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(tabs)/shop');
+                            }}
+                        >
+                            <Ionicons name={isPro ? "diamond" : "bag-handle-outline"} size={14} color={isPro ? "#FF66B2" : "#1a1a1a"} />
+                            <Text style={[styles.cardPillText, isPro && styles.proCardPillText]}>
+                                {isPro ? 'Pro' : `${cardCount}`}
+                            </Text>
+                        </TouchableOpacity>
                     </Animated.View>
-                    <ScrollView contentContainerStyle={styles.setupScroll} showsVerticalScrollIndicator={false}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                        style={{ flex: 1 }}
+                        keyboardVerticalOffset={Platform.OS === 'ios' ? 10 : 0}
+                    >
+                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                            <ScrollView 
+                                contentContainerStyle={styles.setupScroll} 
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                            >
                         <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.setupHeader}>
                             <View style={styles.setupIconWrap}>
                                 <LinearGradient colors={['#2D1B69', '#5B3FCF']} style={styles.setupIcon}>
@@ -813,6 +1065,10 @@ export default function LdrScreen() {
                                         activeOpacity={0.7}
                                         style={[styles.modeTile, roomType === 'video' && styles.modeTileActive]} 
                                         onPress={() => { 
+                                            if (remoteConfigs?.feature_flags?.video_calls === false) {
+                                                showAlert('Video Calls Paused', 'Video calling is temporarily paused by administrator.');
+                                                return;
+                                            }
                                             if (!isPro) {
                                                 setShowPaywall(true);
                                                 return;
@@ -826,9 +1082,15 @@ export default function LdrScreen() {
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                             <Text style={[styles.modeTileTitle, roomType === 'video' && styles.modeTileTitleActive]}>Video Call</Text>
-                                            {!isPro && <Ionicons name="diamond" size={12} color="#FF6B35" />}
+                                            {remoteConfigs?.feature_flags?.video_calls === false ? (
+                                                <Text style={{ fontSize: 10, color: '#EF4444', fontWeight: 'bold' }}>OFF</Text>
+                                            ) : !isPro ? (
+                                                <Ionicons name="diamond" size={12} color="#FF6B35" />
+                                            ) : null}
                                         </View>
-                                        <Text style={styles.modeTileSub}>{isPro ? 'Face-to-face dares' : 'Premium Feature'}</Text>
+                                        <Text style={styles.modeTileSub}>
+                                            {remoteConfigs?.feature_flags?.video_calls === false ? 'Temporarily paused' : isPro ? 'Face-to-face dares' : 'Premium Feature'}
+                                        </Text>
                                     </TouchableOpacity>
 
                                     <TouchableOpacity 
@@ -895,7 +1157,9 @@ export default function LdrScreen() {
                                 </TouchableOpacity>
                             </Animated.View>
                         )}
-                    </ScrollView>
+                            </ScrollView>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
                 </SafeAreaView>
                 <PaywallModal 
                     visible={showPaywall} 
@@ -971,15 +1235,7 @@ export default function LdrScreen() {
                             <Ionicons name="chevron-back" size={24} color="#1a1a1a" />
                         </TouchableOpacity>
                         <Text style={styles.navTitle}>LDR Mode</Text>
-                        <TouchableOpacity
-                            onPress={() => {
-                                setUseCustomUI(!useCustomUI);
-                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                            }}
-                            style={styles.uiToggle}
-                        >
-                            <Ionicons name={useCustomUI ? "sparkles-outline" : "videocam-outline"} size={22} color={useCustomUI ? "#FF6B35" : "#666"} />
-                        </TouchableOpacity>
+                        <View style={{ width: 24 }} />
                     </Animated.View>
                 </SafeAreaView>
 
@@ -991,13 +1247,13 @@ export default function LdrScreen() {
 
                 <ScrollView
                     style={{ flex: 1 }}
-                    contentContainerStyle={[styles.sessionScroll, { paddingTop: 10, paddingBottom: insets.bottom + 16 }]}
+                    contentContainerStyle={[styles.sessionScroll, { paddingTop: 10, paddingBottom: insets.bottom + 48 }]}
                     showsVerticalScrollIndicator={false}
                 >
                     {roomData?.room_type === 'video' && (
                         <Animated.View entering={FadeInDown.duration(400)} style={styles.videoSection}>
-                            {useCustomUI ? (
-                                <View style={styles.videoContainer}>
+                            <View style={styles.videoContainer}>
+                                <View style={styles.partnerCardWrapper}>
                                     <PartnerVideoCard 
                                         name={partner2 || 'Partner'} 
                                         isLive={partnerConnected} 
@@ -1005,35 +1261,34 @@ export default function LdrScreen() {
                                         AgoraModule={AgoraModule}
                                         roomId={roomId}
                                     />
-                                    <SelfVideoCard 
-                                        name={partner1 || 'You'} 
-                                        isCameraOn={isCameraOn} 
-                                        AgoraModule={AgoraModule}
-                                        engine={engine}
-                                        localUid={localUid}
-                                        isJoined={isJoined}
-                                        roomId={roomId}
+                                    <FloatingReactionOverlay
+                                        particles={reactions}
+                                        onParticleComplete={handleParticleComplete}
                                     />
-                                </View>
-                            ) : (
-                                <View style={styles.uikitWrapper}>
-                                {UIKitModule ? (
-                                    <UIKitModule 
-                                        connectionData={{
-                                            appId: AGORA_APP_ID,
-                                            channel: roomId || 'test',
-                                        }}
-                                        styleProps={{
-                                            UIKitContainer: { height: 400, borderRadius: 20, overflow: 'hidden' },
-                                        }}
-                                    />
-                                ) : (
-                                    <View style={[styles.uikitWrapper, { justifyContent: 'center', alignItems: 'center' }]}>
-                                        <Text style={{ color: '#666' }}>Loading Video Engine...</Text>
+                                    {/* Floating Quick Reaction Dock */}
+                                    <View style={styles.reactionDock}>
+                                        {['💖', '💋', '🔥', '🙈', '😍', '🌶️'].map((emoji) => (
+                                            <TouchableOpacity
+                                                key={emoji}
+                                                style={styles.reactionEmojiBtn}
+                                                onPress={() => handleTriggerReaction(emoji)}
+                                                activeOpacity={0.6}
+                                            >
+                                                <Text style={styles.reactionEmojiText}>{emoji}</Text>
+                                            </TouchableOpacity>
+                                        ))}
                                     </View>
-                                )}
                                 </View>
-                            )}
+                                <SelfVideoCard 
+                                    name={partner1 || 'You'} 
+                                    isCameraOn={isCameraOn} 
+                                    AgoraModule={AgoraModule}
+                                    engine={engine}
+                                    localUid={localUid}
+                                    isJoined={isJoined}
+                                    roomId={roomId}
+                                />
+                            </View>
                         </Animated.View>
                     )}
 
@@ -1044,7 +1299,7 @@ export default function LdrScreen() {
                                     <View style={styles.dareActiveDot} />
                                     <Text style={styles.dareActiveText}>ACTIVE DARE</Text>
                                 </View>
-                                <DareTimer seconds={activeCard.timer ?? 45} />
+                                <DareTimer seconds={activeCard.timer ?? 60} />
                             </View>
                             <Text style={styles.dareTitle}>"{activeCard.text}"</Text>
                             <Text style={styles.dareDesc}>Complete the dare and tap Done when finished!</Text>
@@ -1053,7 +1308,13 @@ export default function LdrScreen() {
                                     <Ionicons name="play-skip-forward" size={14} color="#FF9800" />
                                     <Text style={styles.skipBtnText}>Skip</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity style={styles.doneBtn} onPress={handleDone}>
+                                <TouchableOpacity style={styles.photoProofBtn} onPress={() => setShowCamera(true)} activeOpacity={0.85}>
+                                    <LinearGradient colors={['#EC4899', '#DB2777']} style={styles.photoProofGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                                        <Ionicons name="camera" size={15} color="#fff" />
+                                        <Text style={styles.photoProofText}>Photo</Text>
+                                    </LinearGradient>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.doneBtn} onPress={handleDone} activeOpacity={0.85}>
                                     <LinearGradient colors={['#10B981', '#059669']} style={styles.doneBtnGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                                         <Ionicons name="checkmark-circle" size={16} color="#fff" />
                                         <Text style={styles.doneBtnText}>Done!</Text>
@@ -1073,6 +1334,20 @@ export default function LdrScreen() {
                             <Text style={styles.drawPromptSub}>
                                 {roomData?.current_turn_user_id === userId ? 'Draw a dare to start your turn!' : `${partner2 || 'Partner'} is currently picking their dare...`}
                             </Text>
+
+                            {roomData?.current_turn_user_id !== userId && partnerConnected && (
+                                <TouchableOpacity
+                                    style={[styles.nudgeBtn, glassStyles.container, nudgeCooldown > 0 && { opacity: 0.5 }]}
+                                    onPress={handleNudge}
+                                    disabled={nudgeCooldown > 0}
+                                    activeOpacity={0.85}
+                                >
+                                    <Ionicons name="notifications" size={16} color="#FF6B35" />
+                                    <Text style={styles.nudgeBtnText}>
+                                        {nudgeCooldown > 0 ? `Nudge sent · ${nudgeCooldown}s` : `Nudge ${partner2 || 'Partner'} 💌`}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
 
                             {roomData?.current_turn_user_id === userId && (
                                 <TouchableOpacity style={styles.drawBtnWrap} onPress={handleDrawDare} activeOpacity={0.85}>
@@ -1102,9 +1377,9 @@ export default function LdrScreen() {
 
                     <Animated.View entering={FadeInUp.delay(350).duration(400)} style={styles.bottomControls}>
                         <View style={[styles.reactionPicker, glassStyles.container]}>
-                            {(['❤️', '🔥', '😘', '✨', '🥰'] as const).map(e => (
-                                <TouchableOpacity key={e} onPress={() => sendReaction(e)} style={[styles.reactionBtn, glassStyles.container]}>
-                                    <Text style={{ fontSize: 24 }}>{e}</Text>
+                            {(['💖', '💋', '🔥', '🙈', '😍', '🌶️'] as const).map(e => (
+                                <TouchableOpacity key={e} onPress={() => handleTriggerReaction(e)} style={[styles.reactionBtn, glassStyles.container]}>
+                                    <Text style={{ fontSize: 22 }}>{e}</Text>
                                 </TouchableOpacity>
                             ))}
                         </View>
@@ -1133,6 +1408,11 @@ export default function LdrScreen() {
                         </View>
                     </Animated.View>
                 </ScrollView>
+                <CameraModal 
+                    visible={showCamera} 
+                    onClose={() => setShowCamera(false)} 
+                    onPhotoTaken={handlePhotoTaken} 
+                />
             </View>
         </AnimatedBackground>
     );
@@ -1217,19 +1497,22 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.05)',
         marginBottom: 12,
     },
-    dareCard: { borderRadius: 22, padding: 20 },
-    dareCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 },
+    dareCard: { borderRadius: 22, padding: 18 },
+    dareCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
     dareActiveLabel: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     dareActiveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B35' },
     dareActiveText: { fontSize: 11, fontWeight: '900', color: '#FF6B35', letterSpacing: 1 },
-    dareTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 8, fontStyle: 'italic' },
-    dareDesc: { fontSize: 14, color: '#666', lineHeight: 20, marginBottom: 18 },
-    dareActions: { flexDirection: 'row', gap: 10 },
-    skipBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 12, paddingVertical: 12 },
-    skipBtnText: { fontSize: 14, fontWeight: '700', color: '#FF9800' },
-    doneBtn: { flex: 2, borderRadius: 12, overflow: 'hidden' },
-    doneBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 12 },
-    doneBtnText: { fontSize: 14, fontWeight: '800', color: '#fff' },
+    dareTitle: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', lineHeight: 25, textAlign: 'center', marginBottom: 8 },
+    dareDesc: { fontSize: 13, color: '#666', lineHeight: 18, textAlign: 'center', marginBottom: 14 },
+    dareActions: { flexDirection: 'row', gap: 8 },
+    skipBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 12 },
+    skipBtnText: { fontSize: 13, fontWeight: '700', color: '#FF9800' },
+    photoProofBtn: { flex: 1.2, borderRadius: 12, overflow: 'hidden' },
+    photoProofGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 12 },
+    photoProofText: { fontSize: 13, fontWeight: '800', color: '#fff' },
+    doneBtn: { flex: 1.2, borderRadius: 12, overflow: 'hidden' },
+    doneBtnGrad: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 12 },
+    doneBtnText: { fontSize: 13, fontWeight: '800', color: '#fff' },
 
     intensityContainer: { width: '100%', paddingHorizontal: 0, marginTop: 16, marginBottom: 16 },
     intensityLabel: { fontSize: 13, fontWeight: '700', color: '#888', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5, textAlign: 'center' },
@@ -1240,6 +1523,8 @@ const styles = StyleSheet.create({
     drawPromptCard: { borderRadius: 22, padding: 24, alignItems: 'center' },
     drawPromptTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 8 },
     drawPromptSub: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+    nudgeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,107,53,0.35)' },
+    nudgeBtnText: { color: '#FF6B35', fontSize: 15, fontWeight: '700' },
     drawBtnWrap: { width: '100%', borderRadius: 14, overflow: 'hidden' },
     drawBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16 },
     drawBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -1259,9 +1544,38 @@ const styles = StyleSheet.create({
     controlBtn: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
     endCallBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#FF4444', justifyContent: 'center', alignItems: 'center' },
 
-    reactionsOverlay: { position: 'absolute', bottom: 300, left: 0, right: 0, height: 100, pointerEvents: 'none' },
-    reactionBubble: { position: 'absolute', bottom: 0 },
-    reactionPicker: { flexDirection: 'row', justifyContent: 'center', gap: 10, padding: 12, borderRadius: 24, marginBottom: 8 },
+    partnerCardWrapper: { position: 'relative', width: '100%', borderRadius: 22, overflow: 'hidden' },
+    reactionDock: {
+        position: 'absolute',
+        bottom: 12,
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'rgba(26, 16, 53, 0.75)',
+        borderRadius: 24,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        gap: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.18)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 8,
+        elevation: 8,
+        zIndex: 50,
+    },
+    reactionEmojiBtn: {
+        paddingHorizontal: 6,
+        paddingVertical: 4,
+        borderRadius: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    reactionEmojiText: {
+        fontSize: 18,
+    },
+    reactionPicker: { flexDirection: 'row', justifyContent: 'center', gap: 10, padding: 10, borderRadius: 24, marginBottom: 8 },
     reactionBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
 
     modeRow: { flexDirection: 'row', gap: 12, marginBottom: 20 },
@@ -1282,4 +1596,8 @@ const styles = StyleSheet.create({
     vibePillTextActive: { color: '#fff' },
 
     chatBadge: { position: 'absolute', top: 12, right: 12, width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF6B35', borderWidth: 1.5, borderColor: '#fff' },
+    cardPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: 'rgba(255, 255, 255, 0.8)' },
+    proCardPill: { backgroundColor: 'rgba(255, 102, 178, 0.15)', borderWidth: 1, borderColor: 'rgba(255, 102, 178, 0.3)' },
+    cardPillText: { fontSize: 12, fontWeight: '800', color: '#1a1a1a' },
+    proCardPillText: { color: '#FF66B2' },
 });

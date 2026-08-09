@@ -29,13 +29,21 @@ import { supabase } from '../../src/services/supabase';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens } from '../../src/constants/glass';
 import { sendFeedback, sendBugReport } from '../../src/services/api';
-import { getPurchaseHistory, PurchaseHistoryRecord } from '../../src/services/revenueCatService';
+import { getPurchaseHistory, PurchaseHistoryRecord, restorePurchases, getProEntitlementDetails } from '../../src/services/revenueCatService';
+import { requestNotificationPermissions, scheduleAllReminders, sendPartnerLoveNudge } from '../../src/services/notificationService';
 
 const BG_COLORS = ['#F5F0F0', '#EED9C4', '#D4E2D4'];
 
 export default function SettingsScreen() {
     const router = useRouter();
-    const { partner1, partner2, setPartner1, setPartner2, scores, cardCount, logout, history, selectedVibe, isPro, showAlert, userEmail, userId } = useStore(useShallow(state => ({
+    const {
+        partner1, partner2, setPartner1, setPartner2,
+        scores, cardCount, logout, history,
+        selectedVibe, setSelectedVibe,
+        gender, relationshipStatus, appPurpose, setOnboardingPreferences,
+        notificationsEnabled, setNotificationsEnabled,
+        isPro, setIsPro, showAlert, userEmail, userId
+    } = useStore(useShallow(state => ({
         partner1: state.partner1,
         partner2: state.partner2,
         setPartner1: state.setPartner1,
@@ -45,7 +53,15 @@ export default function SettingsScreen() {
         logout: state.logout,
         history: state.history,
         selectedVibe: state.selectedVibe,
+        setSelectedVibe: state.setSelectedVibe,
+        gender: state.gender,
+        relationshipStatus: state.relationshipStatus,
+        appPurpose: state.appPurpose,
+        setOnboardingPreferences: state.setOnboardingPreferences,
+        notificationsEnabled: state.notificationsEnabled,
+        setNotificationsEnabled: state.setNotificationsEnabled,
         isPro: state.isPro,
+        setIsPro: state.setIsPro,
         showAlert: state.showAlert,
         userEmail: state.userEmail,
         userId: state.userId
@@ -95,9 +111,64 @@ export default function SettingsScreen() {
     }));
 
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showPreferencesModal, setShowPreferencesModal] = useState(false);
     const [showPurchaseHistory, setShowPurchaseHistory] = useState(false);
     const [editPartner1, setEditPartner1] = useState(partner1 || '');
     const [editPartner2, setEditPartner2] = useState(partner2 || '');
+
+    const [tempGender, setTempGender] = useState<string | null>(gender);
+    const [tempRel, setTempRel] = useState<string | null>(relationshipStatus);
+    const [tempPurpose, setTempPurpose] = useState<string | null>(appPurpose);
+
+    const GENDER_OPTIONS = [
+        { key: 'male', label: 'Male', emoji: '👨' },
+        { key: 'female', label: 'Female', emoji: '👩' },
+        { key: 'non-binary', label: 'Non-binary', emoji: '⚧️' },
+        { key: 'prefer_not_to_say', label: 'Private', emoji: '✨' },
+    ];
+
+    const REL_OPTIONS = [
+        { key: 'dating', label: 'Dating', emoji: '💖' },
+        { key: 'married', label: 'Married', emoji: '💍' },
+        { key: 'ldr', label: 'Long Distance', emoji: '✈️' },
+        { key: 'single', label: 'Single', emoji: '💫' },
+        { key: 'complicated', label: 'Complicated', emoji: '🌀' },
+    ];
+
+    const PURPOSE_OPTIONS = [
+        { key: 'spice', label: 'Spice Up Romance', emoji: '🔥', desc: 'Intimate heat & passion' },
+        { key: 'fun', label: 'Fun & Laughter', emoji: '😂', desc: 'Playful dares & party' },
+        { key: 'deep', label: 'Deep Connection', emoji: '💬', desc: 'Heart-to-heart bonding' },
+        { key: 'ldr', label: 'Long Distance', emoji: '✈️', desc: 'Remote dares & calls' },
+        { key: 'fantasies', label: 'Explore Fantasies', emoji: '🚀', desc: 'Exciting adventures' },
+    ];
+
+    const genderLabel = GENDER_OPTIONS.find(g => g.key === gender)?.label || 'Not set';
+    const relLabel = REL_OPTIONS.find(r => r.key === relationshipStatus)?.label || 'Not set';
+    const purposeLabel = PURPOSE_OPTIONS.find(p => p.key === appPurpose)?.label || 'All Modes';
+
+    const handleOpenPreferences = () => {
+        setTempGender(gender);
+        setTempRel(relationshipStatus);
+        setTempPurpose(appPurpose);
+        setShowPreferencesModal(true);
+    };
+
+    const handleSavePreferences = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setOnboardingPreferences({
+            gender: tempGender,
+            relationshipStatus: tempRel,
+            appPurpose: tempPurpose,
+        });
+
+        if (tempPurpose === 'spice') setSelectedVibe('spicy');
+        else if (tempPurpose === 'fun') setSelectedVibe('fun');
+        else if (tempPurpose === 'deep') setSelectedVibe('romantic');
+
+        setShowPreferencesModal(false);
+        showAlert('Preferences Saved ✨', 'Your gaming profile and recommendations have been updated.');
+    };
 
     const [memberSince, setMemberSince] = useState<string | null>(null);
 
@@ -227,6 +298,68 @@ export default function SettingsScreen() {
         }
     };
 
+    const [isNudging, setIsNudging] = useState(false);
+    const handleToggleNotifications = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (notificationsEnabled) {
+            setNotificationsEnabled(false);
+            showAlert('Reminders Paused', 'Daily streak and evening intimacy reminders are turned off.');
+        } else {
+            const granted = await requestNotificationPermissions();
+            if (granted) {
+                showAlert('Reminders Active! 🔔', 'We will gently remind you at 8:30 PM & 9:45 PM to keep your love streak blazing!');
+            } else {
+                showAlert('Permissions Required', 'Please enable notifications in your device settings to receive love streak alerts.');
+            }
+        }
+    };
+
+    const handleSendLoveNudge = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+        setIsNudging(true);
+        try {
+            await sendPartnerLoveNudge(displayPartner2);
+            showAlert(`Love Nudge Sent! 💖`, `We sent an intimate "Thinking of You" alert to ${displayPartner2}.`);
+        } catch (e) {
+            showAlert('Error', 'Could not send nudge right now.');
+        } finally {
+            setIsNudging(false);
+        }
+    };
+
+    const handleRestorePurchases = async () => {
+        setIsRestoring(true);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        try {
+            const info = await restorePurchases();
+            const proDetails = getProEntitlementDetails(info);
+            if (proDetails.isPro) {
+                setIsPro(true, proDetails.expiresAt);
+                if (userId) {
+                    const api = await import('../../src/services/api');
+                    api.syncProStatusToBackend(userId, true, proDetails.expiresAt).catch(() => {});
+                }
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                showAlert('✅ Purchases Restored!', 'Your Rumbala Pro membership has been restored with unlimited access.');
+            } else {
+                showAlert('No Purchases Found', 'No active subscription was found on this store account.');
+            }
+        } catch (e: any) {
+            showAlert('Restore Error', e?.message || 'Failed to restore purchases.');
+        } finally {
+            setIsRestoring(false);
+        }
+    };
+
+    const handleBack = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/(tabs)/pro');
+        }
+    };
+
     return (
         <AnimatedBackground colors={BG_COLORS}>
             <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -238,7 +371,7 @@ export default function SettingsScreen() {
                 >
                     {/* Header Nav */}
                     <View style={styles.navBar}>
-                        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, glassStyles.container]}>
+                        <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
                             <Ionicons name="arrow-back" size={22} color="#1a1a1a" />
                         </TouchableOpacity>
                         <Text style={styles.navTitle}>Settings</Text>
@@ -389,18 +522,40 @@ export default function SettingsScreen() {
                         </View>
                     </Animated.View>
 
-                    {/* ─── Profile Section ─── */}
+                    {/* ─── Profile & Preferences Section ─── */}
                     <Animated.View entering={FadeInDown.delay(300).duration(500).springify()} style={styles.section}>
-                        <Text style={styles.sectionLabel}>PROFILE</Text>
+                        <Text style={styles.sectionLabel}>PROFILE & PREFERENCES</Text>
                         <View style={[styles.card, glassStyles.container]}>
                             <SettingItem
-                                icon="people-outline" iconColor="#FF6B35" title="Edit Partner Names" subtitle="Update your couple names"
-                                onPress={() => { setEditPartner1(partner1 || ''); setEditPartner2(partner2 || ''); setShowEditModal(true); }}
+                                icon="options-outline" iconColor="#FF6B35" title="Gaming Preferences" subtitle={`${genderLabel} • ${relLabel} • ${purposeLabel}`}
+                                onPress={handleOpenPreferences}
                             />
                             <View style={styles.rowDivider} />
                             <SettingItem
-                                icon="heart-circle-outline" iconColor="#FF9800" title="Change Vibe" subtitle={selectedVibe ? `Currently: ${selectedVibe}` : 'Set your vibe'}
-                                onPress={() => showAlert('Coming Soon', 'Vibe settings coming soon!')}
+                                icon="people-outline" iconColor="#EC4899" title="Edit Couple Names" subtitle={`${partner1 || 'Partner 1'} & ${partner2 || 'Partner 2'}`}
+                                onPress={() => { setEditPartner1(partner1 || ''); setEditPartner2(partner2 || ''); setShowEditModal(true); }}
+                            />
+                        </View>
+                    </Animated.View>
+
+                    {/* ─── Notifications & Streaks Section ─── */}
+                    <Animated.View entering={FadeInDown.delay(350).duration(500).springify()} style={styles.section}>
+                        <Text style={styles.sectionLabel}>NOTIFICATIONS & STREAKS</Text>
+                        <View style={[styles.card, glassStyles.container]}>
+                            <SettingItem
+                                icon="notifications-outline"
+                                iconColor="#8B5CF6"
+                                title="Daily Reminders & Streaks"
+                                subtitle={notificationsEnabled ? "Active • 8:30 PM & 9:45 PM" : "Disabled (Tap to enable)"}
+                                onPress={handleToggleNotifications}
+                            />
+                            <View style={styles.rowDivider} />
+                            <SettingItem
+                                icon="heart-circle-outline"
+                                iconColor="#EC4899"
+                                title={`Nudge ${displayPartner2} 💖`}
+                                subtitle={isNudging ? "Sending intimate love alert..." : "Send a quick 'Thinking of you' push alert"}
+                                onPress={handleSendLoveNudge}
                             />
                         </View>
                     </Animated.View>
@@ -417,6 +572,11 @@ export default function SettingsScreen() {
                             <SettingItem
                                 icon="receipt-outline" iconColor="#7C3AED" title="Purchase History" subtitle="View your card packs"
                                 onPress={() => setShowPurchaseHistory(true)}
+                            />
+                            <View style={styles.rowDivider} />
+                            <SettingItem
+                                icon="refresh-circle-outline" iconColor="#FF6B35" title="Restore Purchases" subtitle={isRestoring ? "Checking store account..." : "Restore active subscriptions"}
+                                onPress={handleRestorePurchases}
                             />
                             <View style={styles.rowDivider} />
                             <SettingItem
@@ -450,14 +610,14 @@ export default function SettingsScreen() {
 
                 {/* Edit Profile Modal */}
                 <Modal visible={showEditModal} animationType="slide" transparent onRequestClose={() => setShowEditModal(false)}>
-                    <TouchableWithoutFeedback onPress={() => { setShowEditModal(false); Keyboard.dismiss(); }}>
-                        <View style={styles.modalOverlay}>
-                            <TouchableWithoutFeedback>
-                                <KeyboardAvoidingView 
-                                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-                                    style={{ width: '100%' }}
-                                >
-                            <Animated.View entering={FadeInDown} style={styles.modalSheet}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                        style={{ flex: 1 }}
+                    >
+                        <TouchableWithoutFeedback onPress={() => { setShowEditModal(false); Keyboard.dismiss(); }}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback>
+                                    <Animated.View entering={FadeInDown} style={styles.modalSheet}>
                                 <View style={styles.modalHandle} />
                                 <View style={styles.modalHeader}>
                                     <Text style={styles.modalTitle}>Edit Profile</Text>
@@ -465,7 +625,7 @@ export default function SettingsScreen() {
                                         <Ionicons name="close" size={24} color="#666" />
                                     </TouchableOpacity>
                                 </View>
-                                <ScrollView style={styles.modalBody}>
+                                <ScrollView style={styles.modalBody} keyboardShouldPersistTaps="handled">
                                     <Text style={styles.inputLabel}>Your Name</Text>
                                     <TextInput
                                         style={[styles.textInput, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.03)' }]} value={editPartner1} onChangeText={setEditPartner1}
@@ -482,8 +642,107 @@ export default function SettingsScreen() {
                                         </LinearGradient>
                                     </TouchableOpacity>
                                 </ScrollView>
-                            </Animated.View>
-                        </KeyboardAvoidingView>
+                                    </Animated.View>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
+                </Modal>
+
+                {/* ─── Preferences Modal ─── */}
+                <Modal visible={showPreferencesModal} animationType="slide" transparent onRequestClose={() => setShowPreferencesModal(false)}>
+                    <TouchableWithoutFeedback onPress={() => setShowPreferencesModal(false)}>
+                        <View style={styles.modalOverlay}>
+                            <TouchableWithoutFeedback>
+                                <Animated.View entering={FadeInDown} style={styles.modalSheet}>
+                                    <View style={styles.modalHandle} />
+                                    <View style={styles.modalHeader}>
+                                        <Text style={styles.modalTitle}>Your Preferences</Text>
+                                        <TouchableOpacity onPress={() => setShowPreferencesModal(false)} style={[styles.modalCloseBtn, glassStyles.container]}>
+                                            <Ionicons name="close" size={24} color="#666" />
+                                        </TouchableOpacity>
+                                    </View>
+                                    <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                                        {/* Gender */}
+                                        <Text style={styles.prefSectionTitle}>YOUR GENDER</Text>
+                                        <View style={styles.prefChipGrid}>
+                                            {GENDER_OPTIONS.map(opt => {
+                                                const selected = tempGender === opt.key;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={opt.key}
+                                                        style={[styles.prefChip, glassStyles.container, selected && styles.prefChipActive]}
+                                                        onPress={() => {
+                                                            Haptics.selectionAsync();
+                                                            setTempGender(opt.key);
+                                                        }}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={styles.prefChipEmoji}>{opt.emoji}</Text>
+                                                        <Text style={[styles.prefChipLabel, selected && styles.prefChipLabelActive]}>{opt.label}</Text>
+                                                        {selected && <Ionicons name="checkmark-circle" size={16} color="#FF6B35" style={{ marginLeft: 4 }} />}
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+
+                                        {/* Relationship Status */}
+                                        <Text style={[styles.prefSectionTitle, { marginTop: 20 }]}>RELATIONSHIP STATUS</Text>
+                                        <View style={styles.prefChipGrid}>
+                                            {REL_OPTIONS.map(opt => {
+                                                const selected = tempRel === opt.key;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={opt.key}
+                                                        style={[styles.prefChip, glassStyles.container, selected && styles.prefChipActive]}
+                                                        onPress={() => {
+                                                            Haptics.selectionAsync();
+                                                            setTempRel(opt.key);
+                                                        }}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={styles.prefChipEmoji}>{opt.emoji}</Text>
+                                                        <Text style={[styles.prefChipLabel, selected && styles.prefChipLabelActive]}>{opt.label}</Text>
+                                                        {selected && <Ionicons name="checkmark-circle" size={16} color="#FF6B35" style={{ marginLeft: 4 }} />}
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+
+                                        {/* App Purpose / Goal */}
+                                        <Text style={[styles.prefSectionTitle, { marginTop: 20 }]}>PRIMARY GAME GOAL</Text>
+                                        <View style={{ gap: 10 }}>
+                                            {PURPOSE_OPTIONS.map(opt => {
+                                                const selected = tempPurpose === opt.key;
+                                                return (
+                                                    <TouchableOpacity
+                                                        key={opt.key}
+                                                        style={[styles.prefGoalCard, glassStyles.container, selected && styles.prefGoalCardActive]}
+                                                        onPress={() => {
+                                                            Haptics.selectionAsync();
+                                                            setTempPurpose(opt.key);
+                                                        }}
+                                                        activeOpacity={0.7}
+                                                    >
+                                                        <Text style={styles.prefGoalEmoji}>{opt.emoji}</Text>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={[styles.prefGoalTitle, selected && styles.prefGoalTitleActive]}>{opt.label}</Text>
+                                                            <Text style={styles.prefGoalSub}>{opt.desc}</Text>
+                                                        </View>
+                                                        {selected && <Ionicons name="checkmark-circle" size={20} color="#FF6B35" />}
+                                                    </TouchableOpacity>
+                                                );
+                                            })}
+                                        </View>
+
+                                        <TouchableOpacity style={styles.saveBtn} onPress={handleSavePreferences} activeOpacity={0.8}>
+                                            <LinearGradient colors={['#FF6B35', '#FF9800']} style={styles.saveBtnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
+                                                <Text style={styles.saveBtnText}>Save Preferences</Text>
+                                            </LinearGradient>
+                                        </TouchableOpacity>
+                                        <View style={{ height: 30 }} />
+                                    </ScrollView>
+                                </Animated.View>
                             </TouchableWithoutFeedback>
                         </View>
                     </TouchableWithoutFeedback>
@@ -542,14 +801,14 @@ export default function SettingsScreen() {
                 </Modal>
 
                 <Modal visible={showFeedbackModal} animationType="slide" transparent onRequestClose={() => setShowFeedbackModal(false)}>
-                    <TouchableWithoutFeedback onPress={() => { setShowFeedbackModal(false); Keyboard.dismiss(); }}>
-                        <View style={styles.modalOverlay}>
-                            <TouchableWithoutFeedback>
-                                <KeyboardAvoidingView 
-                                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-                                    style={{ width: '100%' }}
-                                >
-                            <Animated.View entering={FadeInDown} style={styles.modalSheet}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                        style={{ flex: 1 }}
+                    >
+                        <TouchableWithoutFeedback onPress={() => { setShowFeedbackModal(false); Keyboard.dismiss(); }}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback>
+                                    <Animated.View entering={FadeInDown} style={styles.modalSheet}>
                                 <View style={styles.modalHandle} />
                                 <View style={styles.modalHeader}>
                                     <Text style={styles.modalTitle}>Your Feedback</Text>
@@ -557,7 +816,7 @@ export default function SettingsScreen() {
                                         <Ionicons name="close" size={24} color="#666" />
                                     </TouchableOpacity>
                                 </View>
-                                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                                     <Text style={styles.inputLabel}>How would you rate Rumbala?</Text>
                                     <View style={styles.ratingRow}>
                                         {[1, 2, 3, 4, 5].map((star) => (
@@ -597,21 +856,21 @@ export default function SettingsScreen() {
                                     </TouchableOpacity>
                                 </ScrollView>
                             </Animated.View>
-                        </KeyboardAvoidingView>
-                            </TouchableWithoutFeedback>
-                        </View>
-                    </TouchableWithoutFeedback>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
                 </Modal>
 
                 <Modal visible={showBugModal} animationType="slide" transparent onRequestClose={() => setShowBugModal(false)}>
-                    <TouchableWithoutFeedback onPress={() => { setShowBugModal(false); Keyboard.dismiss(); }}>
-                        <View style={styles.modalOverlay}>
-                            <TouchableWithoutFeedback>
-                                <KeyboardAvoidingView 
-                                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
-                                    style={{ width: '100%' }}
-                                >
-                            <Animated.View entering={FadeInDown} style={styles.modalSheet}>
+                    <KeyboardAvoidingView 
+                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+                        style={{ flex: 1 }}
+                    >
+                        <TouchableWithoutFeedback onPress={() => { setShowBugModal(false); Keyboard.dismiss(); }}>
+                            <View style={styles.modalOverlay}>
+                                <TouchableWithoutFeedback>
+                                    <Animated.View entering={FadeInDown} style={styles.modalSheet}>
                                 <View style={styles.modalHandle} />
                                 <View style={styles.modalHeader}>
                                     <Text style={styles.modalTitle}>Report a Bug</Text>
@@ -619,7 +878,7 @@ export default function SettingsScreen() {
                                         <Ionicons name="close" size={24} color="#666" />
                                     </TouchableOpacity>
                                 </View>
-                                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
                                     <Text style={styles.inputLabel}>What went wrong? 🛠️</Text>
                                     <TextInput
                                         style={[styles.textArea, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.03)' }]} 
@@ -649,10 +908,10 @@ export default function SettingsScreen() {
                                     </Text>
                                 </ScrollView>
                             </Animated.View>
-                        </KeyboardAvoidingView>
-                            </TouchableWithoutFeedback>
-                        </View>
-                    </TouchableWithoutFeedback>
+                                </TouchableWithoutFeedback>
+                            </View>
+                        </TouchableWithoutFeedback>
+                    </KeyboardAvoidingView>
                 </Modal>
 
             </SafeAreaView>
@@ -783,4 +1042,19 @@ const styles = StyleSheet.create({
     logoutCancelText: { color: '#666', fontSize: 16, fontWeight: '800' },
     logoutConfirmBtn: { backgroundColor: '#EF4444' },
     logoutConfirmText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+
+    prefSectionTitle: { fontSize: 12, fontWeight: '800', color: '#888', letterSpacing: 1.2, marginBottom: 10, marginLeft: 4 },
+    prefChipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+    prefChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(0,0,0,0.02)' },
+    prefChipActive: { borderColor: '#FF6B35', backgroundColor: 'rgba(255, 107, 53, 0.08)' },
+    prefChipEmoji: { fontSize: 16, marginRight: 8 },
+    prefChipLabel: { fontSize: 14, fontWeight: '600', color: '#444' },
+    prefChipLabelActive: { color: '#FF6B35', fontWeight: '800' },
+
+    prefGoalCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.06)', backgroundColor: 'rgba(0,0,0,0.02)' },
+    prefGoalCardActive: { borderColor: '#FF6B35', backgroundColor: 'rgba(255, 107, 53, 0.08)' },
+    prefGoalEmoji: { fontSize: 24, marginRight: 14 },
+    prefGoalTitle: { fontSize: 15, fontWeight: '700', color: '#1a1a1a', marginBottom: 2 },
+    prefGoalTitleActive: { color: '#FF6B35', fontWeight: '800' },
+    prefGoalSub: { fontSize: 12, color: '#666', fontWeight: '500' },
 });

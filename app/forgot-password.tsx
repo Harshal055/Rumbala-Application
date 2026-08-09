@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar
+    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, StatusBar,
+    TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -61,11 +62,12 @@ export default function ForgotPasswordScreen() {
                 </Animated.View>
 
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <ScrollView 
-                        contentContainerStyle={styles.scroll} 
-                        keyboardShouldPersistTaps="handled" 
-                        showsVerticalScrollIndicator={false}
-                    >
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView 
+                            contentContainerStyle={styles.scroll} 
+                            keyboardShouldPersistTaps="handled" 
+                            showsVerticalScrollIndicator={false}
+                        >
                         <Animated.View 
                             entering={FadeInDown.delay(200).duration(800)} 
                             renderToHardwareTextureAndroid={true}
@@ -120,8 +122,9 @@ export default function ForgotPasswordScreen() {
                                     )}
                                 </LinearGradient>
                             </TouchableOpacity>
-                        </Animated.View>
-                    </ScrollView>
+                            </Animated.View>
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
                 </KeyboardAvoidingView>
             </SafeAreaView>
         </AnimatedBackground>

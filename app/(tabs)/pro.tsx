@@ -2,6 +2,7 @@ import React, { useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image, useWindowDimensions, StatusBar, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import Animated, {
     FadeInDown,
     FadeInUp,
@@ -173,11 +174,30 @@ export default function CoupleProfileScreen() {
                 
                 {/* Header */}
                 <View style={[styles.header, glassStyles.header]}>
-                    <View style={styles.headerBtn} />
+                    <View style={{ width: 40 }} />
                     <Text style={styles.headerTitle}>Couple Profile</Text>
-                    <TouchableOpacity onPress={() => router.push('/settings')} style={styles.headerBtn}>
-                        <Ionicons name="settings-sharp" size={24} color="#1a1a1a" />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                        <TouchableOpacity 
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(tabs)/shop');
+                            }} 
+                            style={styles.headerBtn}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="bag-handle-outline" size={22} color="#1a1a1a" />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/(tabs)/settings');
+                            }} 
+                            style={styles.headerBtn}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="settings-sharp" size={22} color="#1a1a1a" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>

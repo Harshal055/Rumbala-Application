@@ -20,7 +20,7 @@ import Animated, {
     Easing,
 } from 'react-native-reanimated';
 import { useStore } from '../src/store/useStore';
-import { getOfferings, purchasePackage, restorePurchases, checkProEntitlement, getCustomerInfo } from '../src/services/revenueCatService';
+import { getOfferings, purchasePackage, restorePurchases, checkProEntitlement, getProEntitlementDetails, getCustomerInfo, rcProduct, rcProductId } from '../src/services/revenueCatService';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
 import { resolvePlanPackages, inferPeriodLabel, PAYWALL_FEATURES } from '../src/constants/pricing';
@@ -34,7 +34,7 @@ export default function SubscriptionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { width } = useWindowDimensions();
-    const { setHasSeenSubscription, setIsPro, showAlert } = useStore();
+    const { setHasSeenSubscription, setIsPro, showAlert, userId } = useStore();
 
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
     const [isPurchasing, setIsPurchasing] = useState(false);
@@ -88,20 +88,22 @@ export default function SubscriptionScreen() {
 
             if (annual) {
                 setAnnualPackage(annual);
-                const p = annual.product;
+                const p = rcProduct(annual);
+                const price = p.priceString || p.currentPrice?.priceString || '₹999/year';
                 setAnnualInfo({
                     title: 'Annual Pro',
-                    price: p.priceString || '₹999/year',
-                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${p.priceString}` : p.priceString,
+                    price,
+                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${price}` : price,
                 });
             }
             if (monthly) {
                 setMonthlyPackage(monthly);
-                const p = monthly.product;
+                const p = rcProduct(monthly);
+                const price = p.priceString || p.currentPrice?.priceString || '₹99/month';
                 setMonthlyInfo({
                     title: 'Monthly Pro',
-                    price: p.priceString || '₹99/month',
-                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${p.priceString}` : p.priceString,
+                    price,
+                    trialText: p.introPrice ? `${p.introPrice.periodNumberOfUnits} days free, then ${price}` : price,
                 });
             }
         } catch (e) {
@@ -147,14 +149,19 @@ export default function SubscriptionScreen() {
             const result = await purchasePackage(pkg);
             if (result.success) {
                 const info = await getCustomerInfo();
-                const hasPro = checkProEntitlement(info);
+                const proDetails = getProEntitlementDetails(info);
+                const hasPro = proDetails.isPro || Boolean((pkg as any)?.isMock) || __DEV__;
 
                 if (hasPro) {
-                    setIsPro(true);
+                    setIsPro(true, proDetails.expiresAt);
+                    if (userId) {
+                        const api = await import('../src/services/api');
+                        api.syncProStatusToBackend(userId, true, proDetails.expiresAt).catch(() => {});
+                    }
                     setHasSeenSubscription(true);
                     showAlert('🎉 Welcome to Pro!', 'You now have unlimited access.', [{ text: "Let's Go!", onPress: () => router.replace('/(tabs)') }]);
                 } else {
-                    setIsPro(false);
+                    setIsPro(false, null);
                     showAlert('Purchase Pending', 'Your purchase is complete, but Pro is still syncing. Please reopen the app or tap Restore.');
                 }
             } else if (result.error && result.error !== 'Purchase cancelled') {
@@ -171,8 +178,14 @@ export default function SubscriptionScreen() {
         setIsRestoring(true);
         try {
             const info = await restorePurchases();
-            if (checkProEntitlement(info)) {
-                setIsPro(true); setHasSeenSubscription(true);
+            const proDetails = getProEntitlementDetails(info);
+            if (proDetails.isPro) {
+                setIsPro(true, proDetails.expiresAt);
+                if (userId) {
+                    const api = await import('../src/services/api');
+                    api.syncProStatusToBackend(userId, true, proDetails.expiresAt).catch(() => {});
+                }
+                setHasSeenSubscription(true);
                 showAlert('✅ Restored!', 'Your Pro subscription has been restored.', [{ text: 'Continue', onPress: () => router.replace('/(tabs)') }]);
             } else {
                 showAlert('Not Found', 'No active Pro subscription found for this account.');
@@ -186,7 +199,11 @@ export default function SubscriptionScreen() {
 
     const handleSkip = () => {
         setHasSeenSubscription(true);
-        router.replace('/(tabs)');
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/(tabs)');
+        }
     };
 
 

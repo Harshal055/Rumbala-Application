@@ -35,12 +35,11 @@ CREATE POLICY "Anon can insert crash reports"
     WITH CHECK (true);
 
 -- Only admin can SELECT (read) crash reports
--- Adjust the admin email to match your admin account
 CREATE POLICY "Admin can read all crash reports"
     ON crash_reports FOR SELECT
     TO authenticated
     USING (
-        auth.jwt() ->> 'email' = 'adminhr@andx.com'
+        public.is_admin()
     );
 
 -- Only admin can UPDATE crash report status
@@ -48,7 +47,7 @@ CREATE POLICY "Admin can update crash reports"
     ON crash_reports FOR UPDATE
     TO authenticated
     USING (
-        auth.jwt() ->> 'email' = 'adminhr@andx.com'
+        public.is_admin()
     );
 
 -- Index for faster admin queries

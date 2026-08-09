@@ -5,7 +5,9 @@ import {
     getUserCards, addUserCards, getProfile, updateProfile,
     addPoints as apiAddPoints, getScores as apiGetScores,
     claimWeeklyFreeCards, getHistory as apiGetHistory,
-    addHistoryEntry as apiAddHistoryEntry, syncCardCount, ensureProfileExists
+    addHistoryEntry as apiAddHistoryEntry, syncCardCount, ensureProfileExists,
+    getAppRemoteConfigs, subscribeToRemoteConfigs, AppRemoteConfigs,
+    syncOnboardingPreferencesToSupabase
 } from '../services/api';
 
 export interface HistoryEntry {
@@ -42,6 +44,15 @@ interface ApplicationState {
     setPartner1: (p1: string) => void;
     setPartner2: (p2: string) => void;
 
+    // Onboarding Survey / Profiling
+    gender: 'male' | 'female' | 'non-binary' | 'other' | 'prefer_not_to_say' | string | null;
+    relationshipStatus: 'single' | 'dating' | 'married' | 'ldr' | 'complicated' | string | null;
+    appPurpose: 'spice' | 'fun' | 'deep' | 'ldr' | 'fantasies' | string | null;
+    setGender: (gender: string | null) => void;
+    setRelationshipStatus: (status: string | null) => void;
+    setAppPurpose: (purpose: string | null) => void;
+    setOnboardingPreferences: (prefs: { gender?: string | null; relationshipStatus?: string | null; appPurpose?: string | null }) => void;
+
     // Game Mode, Vibe & Intensity
     mode: 'local' | 'ldr' | null;
     setMode: (mode: 'local' | 'ldr') => void;
@@ -68,12 +79,17 @@ interface ApplicationState {
 
     // Premium State
     isPro: boolean;
-    setIsPro: (isPro: boolean) => void;
+    proExpiresAt: string | null;
+    setIsPro: (isPro: boolean, expiresAt?: string | null) => void;
+    setProExpiresAt: (expiresAt: string | null) => void;
+    redeemPromoCode: (code: string) => Promise<any>;
 
-    // Cards State \u2014 count-based
+    // Cards State — count-based
     cardCount: number;
     setCardCount: (count: number) => void;
     cards: DareCard[];
+    activeCustomCard: DareCard | null;
+    setActiveCustomCard: (card: DareCard | null) => void;
     fetchCards: () => Promise<void>;
     drawCard: (vibeFilter?: string | null) => DareCard | null;
     addCards: (count: number) => void;
@@ -132,6 +148,11 @@ interface ApplicationState {
     showAlert: (title: string, message: string, buttons?: AlertButton[]) => void;
     hideAlert: () => void;
 
+    // Remote Configs & Feature Switches
+    remoteConfigs: AppRemoteConfigs;
+    fetchRemoteConfigs: () => Promise<void>;
+    setRemoteConfigs: (configs: AppRemoteConfigs) => void;
+
     // Realtime Sync
     setupRealtimeListeners: () => void;
     cleanupRealtimeListeners: () => void;
@@ -146,11 +167,69 @@ let historyChannel: any = null;
 let dailyChannel: any = null;
 let roomChannel: any = null;
 let chatChannel: any = null;
+let configUnsubscribe: (() => void) | null = null;
 
 export const useStore = create<ApplicationState>((set, get) => ({
     hasHydrated: false,
     isAuthChecked: false,
     setHasHydrated: (state) => set({ hasHydrated: state }),
+
+    // Remote Configs & Feature Switches
+    remoteConfigs: {
+        feature_flags: {
+            video_calls: true,
+            spicy_category: true,
+            shop_enabled: true,
+            room_creation: true,
+            promo_codes: true,
+            ai_moderation: true,
+            daily_rewards: true,
+            secret_cards: true,
+        },
+        maintenance_mode: {
+            enabled: false,
+            message: 'Rumbala is currently under brief scheduled maintenance. We will be right back!'
+        },
+        app_update: {
+            enabled: false,
+            latest_android: 7,
+            latest_ios: 7,
+            min_android: 0,
+            min_ios: 0,
+            message: 'A new version of Rumbala is here — with fresh dares and improvements. Update now to keep the sparks flying! ✨',
+            force_message: 'Please update Rumbala to the latest version to continue. This update is required to keep playing. 💕',
+            android_url: '',
+            ios_url: '',
+        }
+    },
+    fetchRemoteConfigs: async () => {
+        try {
+            const configs = await getAppRemoteConfigs();
+            if (configs && Object.keys(configs).length > 0) {
+                set(state => ({
+                    remoteConfigs: {
+                        ...state.remoteConfigs,
+                        ...configs,
+                        feature_flags: {
+                            ...state.remoteConfigs.feature_flags,
+                            ...(configs.feature_flags || {}),
+                        },
+                        maintenance_mode: {
+                            ...state.remoteConfigs.maintenance_mode,
+                            ...(configs.maintenance_mode || {}),
+                        },
+                        app_update: {
+                            ...state.remoteConfigs.app_update,
+                            ...(configs.app_update || {}),
+                        }
+                    }
+                }));
+            }
+        } catch (e) {
+            console.warn('Error fetching remote configs', e);
+        }
+    },
+    setRemoteConfigs: (configs) => set({ remoteConfigs: configs }),
 
     partner1: null,
     partner2: null,
@@ -236,6 +315,45 @@ export const useStore = create<ApplicationState>((set, get) => ({
         AsyncStorage.setItem('@Rumbala_onboarding_seen', seen ? 'true' : 'false');
     },
 
+    gender: null,
+    relationshipStatus: null,
+    appPurpose: null,
+    setGender: (gender) => {
+        set({ gender });
+        if (gender) AsyncStorage.setItem('@Rumbala_gender', gender);
+        else AsyncStorage.removeItem('@Rumbala_gender');
+    },
+    setRelationshipStatus: (relationshipStatus) => {
+        set({ relationshipStatus });
+        if (relationshipStatus) AsyncStorage.setItem('@Rumbala_relationship_status', relationshipStatus);
+        else AsyncStorage.removeItem('@Rumbala_relationship_status');
+    },
+    setAppPurpose: (appPurpose) => {
+        set({ appPurpose });
+        if (appPurpose) AsyncStorage.setItem('@Rumbala_app_purpose', appPurpose);
+        else AsyncStorage.removeItem('@Rumbala_app_purpose');
+    },
+    setOnboardingPreferences: ({ gender, relationshipStatus, appPurpose }) => {
+        set({
+            ...(gender !== undefined && { gender }),
+            ...(relationshipStatus !== undefined && { relationshipStatus }),
+            ...(appPurpose !== undefined && { appPurpose }),
+        });
+        if (gender) AsyncStorage.setItem('@Rumbala_gender', gender);
+        if (relationshipStatus) AsyncStorage.setItem('@Rumbala_relationship_status', relationshipStatus);
+        if (appPurpose) AsyncStorage.setItem('@Rumbala_app_purpose', appPurpose);
+
+        const uid = get().userId;
+        if (uid) {
+            syncOnboardingPreferencesToSupabase(uid, {
+                gender: gender || get().gender,
+                relationship_status: relationshipStatus || get().relationshipStatus,
+                app_purpose: appPurpose || get().appPurpose,
+                vibe: get().selectedVibe,
+            }).catch(() => {});
+        }
+    },
+
     hasSeenSubscription: false,
     setHasSeenSubscription: (seen) => {
         set({ hasSeenSubscription: seen });
@@ -276,9 +394,34 @@ export const useStore = create<ApplicationState>((set, get) => ({
     setIsHost: (isHost) => set({ isHost }),
 
     isPro: false,
-    setIsPro: (isPro) => {
-        set({ isPro });
-        AsyncStorage.setItem('@Rumbala_is_pro', isPro ? 'true' : 'false');
+    proExpiresAt: null,
+    setIsPro: (isPro, expiresAt) => {
+        let exp = expiresAt !== undefined ? expiresAt : get().proExpiresAt;
+        // If explicitly enabling Pro without a new expiration date, but old stored expiration date is in the past, clear it so it doesn't block Pro
+        if (isPro && exp && new Date(exp).getTime() <= Date.now()) {
+            if (expiresAt === undefined) {
+                exp = null;
+            }
+        }
+        const isActive = Boolean(isPro && (!exp || new Date(exp).getTime() > Date.now()));
+        set({ isPro: isActive, proExpiresAt: exp });
+        AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
+        if (exp) {
+            AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+        } else {
+            AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+        }
+    },
+    setProExpiresAt: (expiresAt) => {
+        const { isPro } = get();
+        const isActive = Boolean(isPro && (!expiresAt || new Date(expiresAt).getTime() > Date.now()));
+        set({ isPro: isActive, proExpiresAt: expiresAt });
+        AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
+        if (expiresAt) {
+            AsyncStorage.setItem('@Rumbala_pro_expires_at', expiresAt);
+        } else {
+            AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+        }
     },
 
     // ── Retention Logic ──
@@ -394,6 +537,8 @@ export const useStore = create<ApplicationState>((set, get) => ({
     },
 
     cards: [],
+    activeCustomCard: null,
+    setActiveCustomCard: (card) => set({ activeCustomCard: card }),
     fetchCards: async () => {
         try {
             const api = await import('../services/api');
@@ -404,9 +549,11 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
     drawCard: (vibeFilter?: string | null) => {
         const { cardCount, isPro, cards, mode } = get();
+        // If not Pro and out of cards, block draw
         if (!isPro && cardCount <= 0) return null;
 
-        let pool = (cards && cards.length > 0) ? cards : CARDS;
+        const fullDeck = (cards && cards.length > 0) ? cards : CARDS;
+        let pool = fullDeck;
 
         // 🔒 Mode & Vibe Enforcement
         if (vibeFilter === 'ldr') {
@@ -416,29 +563,38 @@ export const useStore = create<ApplicationState>((set, get) => ({
             // In LDR mode, only show LDR cards, but respect vibe (fun/romantic/spicy)
             pool = pool.filter(c => c.type === 'ldr');
             if (vibeFilter && vibeFilter !== 'all') {
-                pool = pool.filter(c => c.vibe === vibeFilter);
+                const subPool = pool.filter(c => c.vibe === vibeFilter || c.type === vibeFilter);
+                if (subPool.length > 0) pool = subPool;
             }
         } else {
-            // In Together mode, exclude LDR cards unless specifically filtered (handled above)
+            // In Together mode, exclude LDR cards unless specifically filtered
             pool = pool.filter(c => c.type !== 'ldr');
             if (vibeFilter && vibeFilter !== 'all') {
-                pool = pool.filter(c => (get().roomId ? c.vibe : c.type) === vibeFilter);
+                const subPool = pool.filter(c => c.type === vibeFilter || c.vibe === vibeFilter);
+                if (subPool.length > 0) pool = subPool;
             }
         }
 
-        // Apply Intensity Filter ONLY for Spicy category on Home page.
-        // Fun & Romantic always show all cards. LDR always shows all cards.
+        // Apply Intensity Filter ONLY for Spicy category on Home page if matching cards exist
         if (mode !== 'ldr' && vibeFilter === 'spicy') {
             const currentIntensity = get().selectedIntensity;
-            pool = pool.filter(c => (c.intensity ?? 1) === currentIntensity);
+            const intensityPool = pool.filter(c => (c.intensity ?? 1) === currentIntensity);
+            if (intensityPool.length > 0) {
+                pool = intensityPool;
+            }
         }
 
-        if (pool.length === 0) return null;
+        // Graceful fallback if filter exhausted so users (especially Pro) never get blocked
+        if (pool.length === 0) {
+            pool = fullDeck.filter(c => mode === 'ldr' ? c.type === 'ldr' : c.type !== 'ldr');
+            if (pool.length === 0) pool = CARDS;
+        }
 
         const drawn = pool[Math.floor(Math.random() * pool.length)];
 
+        // Only decrement cards for FREE non-Pro users! Pro users have UNLIMITED cards.
         if (!isPro) {
-            const newCount = cardCount - 1;
+            const newCount = Math.max(0, cardCount - 1);
             get().setCardCount(newCount);
             const { userId, isAuthenticated } = get();
             if (userId && isAuthenticated) {
@@ -451,6 +607,24 @@ export const useStore = create<ApplicationState>((set, get) => ({
     addCards: (count) => {
         const newCount = get().cardCount + count;
         get().setCardCount(newCount);
+    },
+
+    redeemPromoCode: async (code: string) => {
+        const { userId } = get();
+        if (!userId) throw new Error('Please log in or create an account to redeem promo codes.');
+        const api = await import('../services/api');
+        const result = await api.redeemPromoCode(userId, code);
+        if (result.success) {
+            if (result.grantProDays !== undefined && result.grantProDays > 0) {
+                get().setIsPro(true, result.expiresAt || null);
+            } else if (result.isLifetime) {
+                get().setIsPro(true, null);
+            }
+            if (result.newCardCount !== undefined) {
+                get().setCardCount(result.newCardCount);
+            }
+        }
+        return result;
     },
 
     loadCardsFromSupabase: async (userId: string) => {
@@ -509,18 +683,43 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 const updates: any = {};
                 if (!profile.partner1 && localP1) updates.partner1 = localP1;
                 if (!profile.partner2 && localP2) updates.partner2 = localP2;
+                if (get().selectedVibe && profile.vibe !== get().selectedVibe) {
+                    updates.vibe = get().selectedVibe;
+                }
                 if (Object.keys(updates).length > 0) {
                     await updateProfile(userId, updates);
                 }
+                if (profile.vibe && !get().selectedVibe) {
+                    set({ selectedVibe: profile.vibe });
+                    await AsyncStorage.setItem('@Rumbala_vibe', profile.vibe);
+                }
                 if (profile.partner1) set({ partner1: profile.partner1 });
                 if (profile.partner2) set({ partner2: profile.partner2 });
+
+                // Sync onboarding questionnaire preferences to Supabase
+                syncOnboardingPreferencesToSupabase(userId, {
+                    gender: get().gender,
+                    relationship_status: get().relationshipStatus,
+                    app_purpose: get().appPurpose,
+                    vibe: get().selectedVibe,
+                }).catch(() => {});
                 if (profile.card_count !== undefined) {
                     set({ cardCount: profile.card_count });
                     await AsyncStorage.setItem('@Rumbala_card_count', String(profile.card_count));
                 }
-                if (profile.is_pro !== undefined) {
-                    set({ isPro: profile.is_pro });
-                    await AsyncStorage.setItem('@Rumbala_is_pro', profile.is_pro ? 'true' : 'false');
+                if (profile.is_pro !== undefined || profile.pro_expires_at !== undefined) {
+                    const exp = profile.pro_expires_at || null;
+                    const isRemoteActive = Boolean(profile.is_pro && (!exp || new Date(exp).getTime() > Date.now()));
+                    // Keep Pro active if remote profile confirms it OR if local store is already Pro from an active RevenueCat session
+                    if (isRemoteActive || !get().isPro) {
+                        set({ isPro: isRemoteActive, proExpiresAt: exp });
+                        await AsyncStorage.setItem('@Rumbala_is_pro', isRemoteActive ? 'true' : 'false');
+                        if (exp) {
+                            await AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+                        } else {
+                            await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+                        }
+                    }
                 }
                 if (profile.last_weekly_claim_at) set({ lastFreeClaimDate: profile.last_weekly_claim_at });
             }
@@ -642,21 +841,51 @@ export const useStore = create<ApplicationState>((set, get) => ({
         get().cleanupRealtimeListeners();
 
         import('../services/supabase').then(({ supabase }) => {
-            // 1. Profile Listener (Self)
+            // 1. Profile Listener (Self) - Dual layer Broadcast + Postgres Realtime
+            const handleProfileUpdate = (data: any) => {
+                if (!data) return;
+                const prevPro = get().isPro;
+                const prevCardCount = get().cardCount;
+
+                if (data.card_count !== undefined) {
+                    const newCount = Number(data.card_count) || 0;
+                    set({ cardCount: newCount });
+                    AsyncStorage.setItem('@Rumbala_card_count', String(newCount));
+                    if (newCount > prevCardCount && prevCardCount > 0) {
+                        get().showAlert('🎁 Bonus Cards Received!', `You received +${newCount - prevCardCount} dare cards from Rumbala Admin!`);
+                    }
+                }
+
+                if (data.is_pro !== undefined || data.pro_expires_at !== undefined) {
+                    const exp = data.pro_expires_at !== undefined ? data.pro_expires_at : get().proExpiresAt;
+                    const isProRaw = data.is_pro !== undefined ? Boolean(data.is_pro) : get().isPro;
+                    const isActive = Boolean(isProRaw && (!exp || new Date(exp).getTime() > Date.now()));
+                    set({ isPro: isActive, proExpiresAt: exp });
+                    AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
+                    if (exp) {
+                        AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+                    } else {
+                        AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+                    }
+                    if (isActive && !prevPro) {
+                        get().showAlert('🎉 Pro Activated!', 'Your Rumbala Pro Membership is now active! All dares and premium features are unlocked.');
+                    }
+                }
+
+                if (data.partner1) set({ partner1: data.partner1 });
+                if (data.partner2) set({ partner2: data.partner2 });
+            };
+
             profileChannel = supabase
                 .channel(`profile-${userId}`)
+                .on('broadcast', { event: 'user_updated' }, (payload) => {
+                    handleProfileUpdate(payload?.payload);
+                })
+                .on('broadcast', { event: 'pro_status_changed' }, (payload) => {
+                    handleProfileUpdate(payload?.payload);
+                })
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` }, (payload) => {
-                    const data = payload.new as any;
-                    if (data.card_count !== undefined) {
-                        set({ cardCount: data.card_count });
-                        AsyncStorage.setItem('@Rumbala_card_count', String(data.card_count));
-                    }
-                    if (data.is_pro !== undefined) {
-                        set({ isPro: data.is_pro });
-                        AsyncStorage.setItem('@Rumbala_is_pro', data.is_pro ? 'true' : 'false');
-                    }
-                    if (data.partner1) set({ partner1: data.partner1 });
-                    if (data.partner2) set({ partner2: data.partner2 });
+                    handleProfileUpdate(payload.new);
                 })
                 .subscribe();
 
@@ -711,6 +940,10 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
     cleanupRealtimeListeners: () => {
         get().cleanupRoomListeners(); // Also cleanup room if active
+        if (configUnsubscribe) {
+            configUnsubscribe();
+            configUnsubscribe = null;
+        }
         import('../services/supabase').then(({ supabase }) => {
             if (profileChannel) supabase.removeChannel(profileChannel);
             if (scoreChannel) supabase.removeChannel(scoreChannel);
@@ -762,14 +995,16 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
     hydrate: async () => {
         try {
-            // Batch read all keys at once for faster hydration
+            // Batch read all local keys at once for ultra-fast instant startup (<10ms)
             const keys = [
                 '@Rumbala_names', '@Rumbala_mode', '@Rumbala_vibe',
                 '@Rumbala_card_count', '@Rumbala_last_claim', '@Rumbala_scores',
                 '@Rumbala_history', '@Rumbala_last_paywall_shown', '@Rumbala_room_id',
-                '@Rumbala_is_pro', '@Rumbala_streak_count', '@Rumbala_last_active',
+                '@Rumbala_is_pro', '@Rumbala_pro_expires_at', '@Rumbala_streak_count', '@Rumbala_last_active',
                 '@Rumbala_milestones', '@Rumbala_daily_answer', '@Rumbala_onboarding_seen',
                 '@Rumbala_subscription_seen', '@Rumbala_notifications_enabled',
+                '@Rumbala_auth', '@Rumbala_userId', '@Rumbala_userEmail',
+                '@Rumbala_gender', '@Rumbala_relationship_status', '@Rumbala_app_purpose',
             ];
             const results = await AsyncStorage.multiGet(keys);
             const cache: Record<string, string | null> = {};
@@ -777,34 +1012,23 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 cache[key] = value;
             }
 
-            const { supabase } = await import('../services/supabase');
-            const { data: { session } } = await supabase.auth.getSession();
-
-            if (session?.user) {
-                const uid = session.user.id;
-                const email = session.user.email || null;
-                set({ userId: uid, userEmail: email, isAuthenticated: true, isAuthChecked: true });
-                AsyncStorage.setItem('@Rumbala_userId', uid).catch(console.warn);
-                if (email) AsyncStorage.setItem('@Rumbala_userEmail', email).catch(console.warn);
-                AsyncStorage.setItem('@Rumbala_auth', 'true').catch(console.warn);
-                await get().syncWithSupabase();
-                get().setupRealtimeListeners();
-            } else {
-                set({ isAuthChecked: true, isAuthenticated: false, userId: null, userEmail: null });
-                AsyncStorage.setItem('@Rumbala_auth', 'false').catch(console.warn);
-            }
-
+            // 1. Instantly restore all UI state from local cache
             const namesJson = cache['@Rumbala_names'];
             if (namesJson) {
                 try {
                     const { partner1, partner2 } = JSON.parse(namesJson);
                     set({ partner1, partner2 });
-                } catch (e) {
-                    console.warn('Failed to parse stored names', e);
-                }
+                } catch (e) {}
             }
 
-            if (cache['@Rumbala_is_pro'] === 'true') set({ isPro: true });
+            if (cache['@Rumbala_gender']) set({ gender: cache['@Rumbala_gender'] });
+            if (cache['@Rumbala_relationship_status']) set({ relationshipStatus: cache['@Rumbala_relationship_status'] });
+            if (cache['@Rumbala_app_purpose']) set({ appPurpose: cache['@Rumbala_app_purpose'] });
+
+            const proExp = cache['@Rumbala_pro_expires_at'];
+            const isProCached = cache['@Rumbala_is_pro'] === 'true';
+            const isProActive = Boolean(isProCached && (!proExp || new Date(proExp).getTime() > Date.now()));
+            set({ isPro: isProActive, proExpiresAt: proExp || null });
             if (cache['@Rumbala_mode']) set({ mode: cache['@Rumbala_mode'] as 'local' | 'ldr' });
             if (cache['@Rumbala_vibe']) set({ selectedVibe: cache['@Rumbala_vibe'] });
             if (cache['@Rumbala_card_count']) set({ cardCount: parseInt(cache['@Rumbala_card_count']!, 10) || 0 });
@@ -817,7 +1041,6 @@ export const useStore = create<ApplicationState>((set, get) => ({
             }
             if (cache['@Rumbala_last_paywall_shown']) set({ lastPaywallShown: cache['@Rumbala_last_paywall_shown'] });
             if (cache['@Rumbala_room_id']) set({ roomId: cache['@Rumbala_room_id'] });
-            
             if (cache['@Rumbala_streak_count']) set({ streak: parseInt(cache['@Rumbala_streak_count']!, 10) || 0 });
             if (cache['@Rumbala_last_active']) set({ lastActiveDate: cache['@Rumbala_last_active'] });
             if (cache['@Rumbala_milestones']) {
@@ -836,10 +1059,74 @@ export const useStore = create<ApplicationState>((set, get) => ({
             if (cache['@Rumbala_subscription_seen'] === 'true') set({ hasSeenSubscription: true });
             if (cache['@Rumbala_notifications_enabled'] === 'true') set({ notificationsEnabled: true });
 
+            // Restore cached auth credentials immediately so user doesn't see a loading spinner
+            const isCachedAuth = cache['@Rumbala_auth'] === 'true';
+            const cachedUid = cache['@Rumbala_userId'] || null;
+            const cachedEmail = cache['@Rumbala_userEmail'] || null;
+
+            set({
+                userId: cachedUid,
+                userEmail: cachedEmail,
+                isAuthenticated: isCachedAuth,
+                isAuthChecked: true,
+                hasHydrated: true,
+            });
+
+            // 2. Run remote network checks in parallel background (non-blocking)
+            (async () => {
+                try {
+                    const { supabase } = await import('../services/supabase');
+                    const { data: { session } } = await supabase.auth.getSession();
+
+                    if (session?.user?.user_metadata) {
+                        const meta = session.user.user_metadata;
+                        const currentGender = get().gender;
+                        const currentRel = get().relationshipStatus;
+                        const currentPurpose = get().appPurpose;
+                        
+                        if (!currentGender && meta.gender) {
+                            set({ gender: meta.gender });
+                            AsyncStorage.setItem('@Rumbala_gender', meta.gender);
+                        }
+                        if (!currentRel && meta.relationship_status) {
+                            set({ relationshipStatus: meta.relationship_status });
+                            AsyncStorage.setItem('@Rumbala_relationship_status', meta.relationship_status);
+                        }
+                        if (!currentPurpose && meta.app_purpose) {
+                            set({ appPurpose: meta.app_purpose });
+                            AsyncStorage.setItem('@Rumbala_app_purpose', meta.app_purpose);
+                        }
+                    }
+
+                    // Background remote config fetch & subscribe
+                    get().fetchRemoteConfigs().catch(() => {});
+                    if (!configUnsubscribe) {
+                        configUnsubscribe = subscribeToRemoteConfigs((updated) => {
+                            get().setRemoteConfigs(updated);
+                        });
+                    }
+
+                    if (session?.user) {
+                        const uid = session.user.id;
+                        const email = session.user.email || null;
+                        set({ userId: uid, userEmail: email, isAuthenticated: true, isAuthChecked: true });
+                        AsyncStorage.setItem('@Rumbala_userId', uid).catch(() => {});
+                        if (email) AsyncStorage.setItem('@Rumbala_userEmail', email).catch(() => {});
+                        AsyncStorage.setItem('@Rumbala_auth', 'true').catch(() => {});
+                        get().syncWithSupabase().catch(() => {});
+                        get().setupRealtimeListeners();
+                    } else if (!isCachedAuth) {
+                        set({ isAuthChecked: true, isAuthenticated: false, userId: null, userEmail: null });
+                        AsyncStorage.setItem('@Rumbala_auth', 'false').catch(() => {});
+                    }
+                } catch (e) {
+                    if (__DEV__) console.warn('[Hydrate Background Sync] Error:', e);
+                }
+            })();
+
         } catch (e) {
             console.error('Failed to hydrate state', e);
-        } finally {
-            set({ hasHydrated: true });
+            set({ hasHydrated: true, isAuthChecked: true });
         }
     }
 }));

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
     View, Text, TextInput, TouchableOpacity, StyleSheet,
     KeyboardAvoidingView, Platform, ScrollView, Image, ActivityIndicator,
-    Dimensions
+    Dimensions, TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,6 +40,7 @@ export default function SignupScreen() {
         if (webClientId) {
             GoogleSignin.configure({
                 webClientId: webClientId,
+                iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
                 offlineAccess: true,
                 forceCodeForRefreshToken: true,
             });
@@ -96,8 +97,9 @@ export default function SignupScreen() {
     };
 
     const handleBack = () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (router.canGoBack()) router.back();
-        else router.replace('/onboarding');
+        else router.replace('/login');
     };
 
     const handleSignup = async () => {
@@ -133,28 +135,29 @@ export default function SignupScreen() {
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
                     style={{ flex: 1 }}
                 >
-                    <ScrollView 
-                        contentContainerStyle={styles.scroll} 
-                        showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                    >
-                        <Animated.View entering={FadeInDown.duration(500)} style={[styles.topHeader, glassStyles.header]}>
-                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
-                                <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
-                            </TouchableOpacity>
-                            <Text style={[styles.headerTitle, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
-                            <View style={{ width: 44 }} />
-                        </Animated.View>
+                    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                        <ScrollView 
+                            contentContainerStyle={styles.scroll} 
+                            showsVerticalScrollIndicator={false}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <Animated.View entering={FadeInDown.duration(500)} style={[styles.topHeader, glassStyles.header]}>
+                                <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
+                                    <Ionicons name="arrow-back" size={24} color="#1a1a1a" />
+                                </TouchableOpacity>
+                                <Text style={[styles.headerTitle, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
+                                <View style={{ width: 44 }} />
+                            </Animated.View>
 
-                        <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.logoHeader}>
-                            <View style={[styles.logoBox, glassStyles.container]}>
-                                <LinearGradient colors={['#FF6B35', '#FF9800']} style={styles.logoGradient}>
-                                    <Ionicons name="heart" size={32} color="#fff" />
-                                </LinearGradient>
-                            </View>
-                            <Text style={styles.title}>Join Rumbala</Text>
-                            <Text style={styles.subtitle}>The ultimate couple's gaming experience</Text>
-                        </Animated.View>
+                            <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.logoHeader}>
+                                <View style={[styles.logoBox, glassStyles.container]}>
+                                    <LinearGradient colors={['#FF6B35', '#FF9800']} style={styles.logoGradient}>
+                                        <Ionicons name="heart" size={32} color="#fff" />
+                                    </LinearGradient>
+                                </View>
+                                <Text style={styles.title}>Join Rumbala</Text>
+                                <Text style={styles.subtitle}>The ultimate couple's gaming experience</Text>
+                            </Animated.View>
 
                         <Animated.View entering={FadeInUp.delay(200).duration(600)} style={[styles.form, glassStyles.container, { padding: 24, borderRadius: 32 }]}>
                             <View style={styles.inputGroup}>
@@ -273,8 +276,9 @@ export default function SignupScreen() {
                                 </Text>
                             </TouchableOpacity>
                         </Animated.View>
-                        <View style={{ height: 40 }} />
-                    </ScrollView>
+                            <View style={{ height: 40 }} />
+                        </ScrollView>
+                    </TouchableWithoutFeedback>
                 </KeyboardAvoidingView>
 
                 <LegalModal 

@@ -50,7 +50,16 @@ export default function ChatScreen() {
 
             {/* Custom Header */}
             <View style={c.chatHeader}>
-                <TouchableOpacity onPress={() => router.back()} style={c.headerBtn}>
+                <TouchableOpacity
+                    onPress={() => {
+                        if (router.canGoBack()) {
+                            router.back();
+                        } else {
+                            router.replace('/(tabs)/ldr');
+                        }
+                    }}
+                    style={c.headerBtn}
+                >
                     <Ionicons name="chevron-back" size={26} color="#1a1a1a" />
                 </TouchableOpacity>
                 <View style={c.headerUser}>
@@ -75,6 +84,7 @@ export default function ChatScreen() {
                 ref={chatScrollRef}
                 style={c.messageList}
                 contentContainerStyle={{ padding: 20, paddingBottom: 100 }}
+                keyboardShouldPersistTaps="handled"
                 onContentSizeChange={() => chatScrollRef.current?.scrollToEnd({ animated: true })}
             >
                 <View style={c.dateWrapper}>
