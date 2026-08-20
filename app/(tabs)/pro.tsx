@@ -49,12 +49,13 @@ const getRelativeTime = (dateStr: string) => {
 
 export default function CoupleProfileScreen() {
     const router = useRouter();
-    const { partner1, partner2, scores, history, isPro, userId, loadScoresFromSupabase } = useStore(useShallow(state => ({
+    const { partner1, partner2, scores, history, isPro, proExpiresAt, userId, loadScoresFromSupabase } = useStore(useShallow(state => ({
         partner1: state.partner1,
         partner2: state.partner2,
         scores: state.scores,
         history: state.history,
         isPro: state.isPro,
+        proExpiresAt: state.proExpiresAt,
         userId: state.userId,
         loadScoresFromSupabase: state.loadScoresFromSupabase,
     })));
@@ -148,7 +149,7 @@ export default function CoupleProfileScreen() {
         { id: 'since', icon: 'calendar-outline' as const, label: 'Together Since', value: profileInsights.togetherSince },
         { id: 'vibe', icon: 'heart-outline' as const, label: 'Most Played Vibe', value: profileInsights.topVibe },
         { id: 'balance', icon: 'stats-chart-outline' as const, label: 'Win Balance', value: profileInsights.balanceLabel },
-        { id: 'tier', icon: 'diamond-outline' as const, label: 'Plan', value: isPro ? 'Pro Couple' : 'Free Couple' },
+        { id: 'tier', icon: 'diamond-outline' as const, label: 'Plan', value: isPro ? (proExpiresAt ? 'Pro Couple' : '👑 Lifetime Pro') : 'Free Couple' },
     ];
 
     const getCardIcon = (type: string) => {
@@ -173,9 +174,7 @@ export default function CoupleProfileScreen() {
                 <StatusBar barStyle="dark-content" />
                 
                 {/* Header */}
-                <View style={[styles.header, glassStyles.header]}>
-                    <View style={{ width: 40 }} />
-                    <Text style={styles.headerTitle}>Couple Profile</Text>
+                <View style={[styles.header, glassStyles.header, { backgroundColor: 'rgba(255, 255, 255, 0.85)', zIndex: 10, justifyContent: 'flex-end' }]}>
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
                         <TouchableOpacity 
                             onPress={() => {
@@ -231,11 +230,11 @@ export default function CoupleProfileScreen() {
 
                         {/* Names */}
                         <View style={styles.nameSection}>
-                            <Text style={styles.coupleName}>{partner1 || 'Partner 1'}</Text>
+                            <Text style={[styles.coupleName, { flexShrink: 1 }]} numberOfLines={1}>{partner1 || 'Partner 1'}</Text>
                             <Animated.View style={heartAnimStyle}>
                                 <Ionicons name="heart" size={16} color="#FF6B35" style={{ marginHorizontal: 6 }} />
                             </Animated.View>
-                            <Text style={styles.coupleName}>{partner2 || 'Partner 2'}</Text>
+                            <Text style={[styles.coupleName, { flexShrink: 1 }]} numberOfLines={1}>{partner2 || 'Partner 2'}</Text>
                         </View>
 
                         {/* Since badge */}

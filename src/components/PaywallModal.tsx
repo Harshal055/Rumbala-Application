@@ -8,7 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import LegalModal from './LegalModal';
 import { glassStyles, glassTokens } from '../constants/glass';
-import { getOfferings, restorePurchases, checkProEntitlement, rcProduct, rcProductId } from '../services/revenueCatService';
+import { getOfferings, restorePurchases, checkProEntitlement, getProEntitlementDetails, rcProduct, rcProductId } from '../services/revenueCatService';
 import { useStore } from '../store/useStore';
 import { PurchasesPackage } from 'react-native-purchases';
 import { PAYWALL_FEATURES, resolvePlanPackages, getPackageKind } from '../constants/pricing';
@@ -39,8 +39,16 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
         setIsRestoring(true);
         try {
             const info = await restorePurchases();
-            if (checkProEntitlement(info)) {
-                setIsPro(true);
+            const proDetails = getProEntitlementDetails(info);
+            if (proDetails.isPro) {
+                setIsPro(true, proDetails.expiresAt);
+                // Sync restored status to backend so it persists
+                const userId = useStore.getState().userId;
+                if (userId) {
+                    import('../services/api').then(api => {
+                        api.syncProStatusToBackend(userId, true, proDetails.expiresAt).catch(() => {});
+                    });
+                }
                 showAlert('✅ Restored!', 'Your Pro subscription has been restored.');
                 onClose();
             } else {

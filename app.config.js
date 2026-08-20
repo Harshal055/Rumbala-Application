@@ -2,7 +2,7 @@
 export default {
   name: "Rumbala",
   slug: "rumbal",
-  version: "1.0.6", // incremented for Play Console
+  version: "1.0.7", // incremented for Play Console
   scheme: "rumbala",
   orientation: "portrait",
   userInterfaceStyle: "light",
@@ -31,19 +31,37 @@ export default {
     predictiveBackGestureEnabled: false,
     package: "com.andx.rumbala",
     icon: "./assets/icon.png",
-    versionCode: 9,
+    versionCode: 10,
     googleServicesFile: "./google-services.json",
     adaptiveIcon: {
       foregroundImage: "./assets/icon.png",
       backgroundColor: "#FF6B35"
-    }
+    },
+    permissions: [
+      "android.permission.CAMERA",
+      "android.permission.RECORD_AUDIO",
+      "android.permission.MODIFY_AUDIO_SETTINGS",
+      "android.permission.ACCESS_NETWORK_STATE",
+      "android.permission.BLUETOOTH",
+      "android.permission.ACCESS_WIFI_STATE",
+      "android.permission.READ_PHONE_STATE"
+    ]
   },
   web: {},
   plugins: [
     "expo-dev-client",
     "@react-native-google-signin/google-signin",
     "expo-camera",
-    "expo-notifications"
+    "expo-notifications",
+    [
+      "expo-build-properties",
+      {
+        "android": {
+          "enableProguardInReleaseBuilds": true,
+          "enableShrinkResourcesInReleaseBuilds": true
+        }
+      }
+    ]
   ],
 
   // Add this line (or update if it exists)

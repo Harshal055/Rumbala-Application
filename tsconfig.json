@@ -7,6 +7,7 @@
   "exclude": [
     "node_modules",
     "admin-web",
-    "dist"
+    "dist",
+    "supabase"
   ]
 }

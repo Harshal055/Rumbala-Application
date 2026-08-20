@@ -727,18 +727,31 @@ export const checkProStatus = (
     isPro?: boolean | null,
     expiresAt?: string | null,
 ): ProStatusResult => {
-    if (!isPro) {
-        return { isActive: false, isExpired: false, remainingDays: null, formattedExpiry: null };
-    }
-    if (!expiresAt) {
+    // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
+    if (isPro && !expiresAt) {
         return { isActive: true, isExpired: false, remainingDays: null, formattedExpiry: 'Lifetime' };
     }
-    const expTime = new Date(expiresAt).getTime();
-    if (isNaN(expTime)) {
-        return { isActive: true, isExpired: false, remainingDays: null, formattedExpiry: 'Lifetime' };
-    }
-    const now = Date.now();
-    if (expTime <= now) {
+    if (expiresAt) {
+        const expTime = new Date(expiresAt).getTime();
+        if (!isNaN(expTime) && expTime > Date.now()) {
+            const remainingMs = expTime - Date.now();
+            const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
+            const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            let label = '';
+            if (remainingDays >= 1) {
+                label = `${remainingDays}d ${remainingHours}h`;
+            } else {
+                const remainingMins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+                label = `${remainingHours}h ${remainingMins}m`;
+            }
+            return {
+                isActive: true,
+                isExpired: false,
+                remainingDays,
+                formattedExpiry: `Expires in ${label}`,
+            };
+        }
+        // Expiry is in the past
         return {
             isActive: false,
             isExpired: true,
@@ -746,44 +759,16 @@ export const checkProStatus = (
             formattedExpiry: `Expired on ${new Date(expiresAt).toLocaleDateString()}`,
         };
     }
-    const remainingMs = expTime - now;
-    const remainingDays = Math.floor(remainingMs / (1000 * 60 * 60 * 24));
-    const remainingHours = Math.floor((remainingMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-    
-    let label = '';
-    if (remainingDays >= 1) {
-        label = `${remainingDays}d ${remainingHours}h`;
-    } else {
-        const remainingMins = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
-        label = `${remainingHours}h ${remainingMins}m`;
-    }
-
-    return {
-        isActive: true,
-        isExpired: false,
-        remainingDays,
-        formattedExpiry: `Expires in ${label}`,
-    };
+    // No flag and no expiry = free user
+    return { isActive: false, isExpired: false, remainingDays: null, formattedExpiry: null };
 };
 
 export const syncProStatusToBackend = async (userId: string, isPro: boolean, expiresAt?: string | null) => {
-    if (!userId) return;
-    const payload: { is_pro: boolean; pro_expires_at?: string | null; updated_at: string } = {
-        is_pro: isPro,
-        pro_expires_at: isPro ? (expiresAt !== undefined ? expiresAt : null) : null,
-        updated_at: new Date().toISOString(),
-    };
-
-    let { error } = await supabase
-        .from('profiles')
-        .update(payload)
-        .eq('id', userId);
-
-    if (error && error.message.includes('pro_expires_at')) {
-        await supabase
-            .from('profiles')
-            .update({ is_pro: isPro, updated_at: new Date().toISOString() })
-            .eq('id', userId);
+    // 🔒 SECURITY UPDATE: We no longer trust the client to update Pro status in the database.
+    // The RevenueCat webhook handles this securely on the backend via the Edge Function.
+    // The client will automatically receive the updated status via Realtime WebSockets.
+    if (__DEV__) {
+        console.log('Skipping client-side Pro sync. Waiting for RevenueCat webhook...');
     }
 };
 
@@ -852,6 +837,9 @@ export const redeemPromoCode = async (userId: string, rawCode: string): Promise<
             newExpiry = null;
             profileUpdates.is_pro = true;
             profileUpdates.pro_expires_at = null;
+        } else if (profile.is_pro && !profile.pro_expires_at) {
+            // User already has Lifetime Pro — don't downgrade to timed access
+            // Just skip the Pro grant, but still award bonus cards below
         } else {
             // Extend or set
             let baseTime = Date.now();

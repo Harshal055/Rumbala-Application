@@ -39,9 +39,11 @@ export interface RoomData {
     updated_at: string;
 }
 
-// Per-room interval handles — keyed by room code to prevent ghost polling
+// Per-room interval handles and callbacks — keyed by room code
 const roomSubscribers = new Map<string, ReturnType<typeof setInterval>>();
 const chatSubscribers = new Map<string, ReturnType<typeof setInterval>>();
+const roomCallbacks = new Map<string, Array<(data: RoomData) => void>>();
+const chatCallbacks = new Map<string, Array<(messages: ChatMessage[]) => void>>();
 
 // ===== ROOM MANAGEMENT =====
 
@@ -122,11 +124,13 @@ export const deleteRoomV2 = async (roomCode: string) => {
     if (roomSub) {
         clearInterval(roomSub);
         roomSubscribers.delete(roomCode);
+        roomCallbacks.delete(roomCode);
     }
     const chatSub = chatSubscribers.get(roomCode);
     if (chatSub) {
         clearInterval(chatSub);
         chatSubscribers.delete(roomCode);
+        chatCallbacks.delete(roomCode);
     }
 };
 
@@ -179,37 +183,45 @@ export const subscribeToRoomV2 = (
     roomCode: string,
     callback: (data: RoomData) => void
 ): (() => void) => {
-    // Bug Fix: Clear any existing subscriber for THIS room only (not all rooms)
-    const existing = roomSubscribers.get(roomCode);
-    if (existing) {
-        clearInterval(existing);
-        roomSubscribers.delete(roomCode);
+    if (!roomCallbacks.has(roomCode)) {
+        roomCallbacks.set(roomCode, []);
     }
+    roomCallbacks.get(roomCode)!.push(callback);
 
     // Initial fetch
     getRoomDataV2(roomCode).then(data => {
         if (data) callback(data);
     }).catch(() => { /* initial fetch failed, polling will retry */ });
 
-    // Poll periodically — each tick is wrapped in try/catch so transient
-    // network errors don't kill the subscription
-    const intervalId = setInterval(async () => {
-        try {
-            const data = await getRoomDataV2(roomCode);
-            if (data) callback(data);
-        } catch (e) {
-            // Silently retry on next tick
-        }
-    }, POLL_INTERVAL_MS);
+    // Poll periodically
+    if (!roomSubscribers.has(roomCode)) {
+        const intervalId = setInterval(async () => {
+            try {
+                const data = await getRoomDataV2(roomCode);
+                if (data) {
+                    const cbs = roomCallbacks.get(roomCode) || [];
+                    cbs.forEach(cb => cb(data));
+                }
+            } catch (e) {
+                // Silently retry on next tick
+            }
+        }, POLL_INTERVAL_MS);
+        roomSubscribers.set(roomCode, intervalId);
+    }
 
-    roomSubscribers.set(roomCode, intervalId);
-
-    // Return unsubscribe function that cleans up ONLY this room's interval
+    // Return unsubscribe function
     return () => {
-        const id = roomSubscribers.get(roomCode);
-        if (id) {
-            clearInterval(id);
-            roomSubscribers.delete(roomCode);
+        const cbs = roomCallbacks.get(roomCode) || [];
+        const index = cbs.indexOf(callback);
+        if (index > -1) cbs.splice(index, 1);
+        
+        if (cbs.length === 0) {
+            const id = roomSubscribers.get(roomCode);
+            if (id) {
+                clearInterval(id);
+                roomSubscribers.delete(roomCode);
+            }
+            roomCallbacks.delete(roomCode);
         }
     };
 };
@@ -222,12 +234,10 @@ export const subscribeToChatV2 = (
     roomCode: string,
     callback: (messages: ChatMessage[]) => void
 ): (() => void) => {
-    // Bug Fix: Clear any existing subscriber for THIS room only
-    const existing = chatSubscribers.get(roomCode);
-    if (existing) {
-        clearInterval(existing);
-        chatSubscribers.delete(roomCode);
+    if (!chatCallbacks.has(roomCode)) {
+        chatCallbacks.set(roomCode, []);
     }
+    chatCallbacks.get(roomCode)!.push(callback);
 
     // Initial fetch
     getChatMessagesV2(roomCode).then(messages => {
@@ -235,23 +245,32 @@ export const subscribeToChatV2 = (
     }).catch(() => { /* initial fetch failed, polling will retry */ });
 
     // Poll periodically
-    const intervalId = setInterval(async () => {
-        try {
-            const messages = await getChatMessagesV2(roomCode);
-            callback(messages);
-        } catch (e) {
-            // Silently retry on next tick
-        }
-    }, POLL_INTERVAL_MS);
+    if (!chatSubscribers.has(roomCode)) {
+        const intervalId = setInterval(async () => {
+            try {
+                const messages = await getChatMessagesV2(roomCode);
+                const cbs = chatCallbacks.get(roomCode) || [];
+                cbs.forEach(cb => cb(messages));
+            } catch (e) {
+                // Silently retry on next tick
+            }
+        }, POLL_INTERVAL_MS);
+        chatSubscribers.set(roomCode, intervalId);
+    }
 
-    chatSubscribers.set(roomCode, intervalId);
-
-    // Return unsubscribe function that cleans up ONLY this room's interval
+    // Return unsubscribe function
     return () => {
-        const id = chatSubscribers.get(roomCode);
-        if (id) {
-            clearInterval(id);
-            chatSubscribers.delete(roomCode);
+        const cbs = chatCallbacks.get(roomCode) || [];
+        const index = cbs.indexOf(callback);
+        if (index > -1) cbs.splice(index, 1);
+
+        if (cbs.length === 0) {
+            const id = chatSubscribers.get(roomCode);
+            if (id) {
+                clearInterval(id);
+                chatSubscribers.delete(roomCode);
+            }
+            chatCallbacks.delete(roomCode);
         }
     };
 };

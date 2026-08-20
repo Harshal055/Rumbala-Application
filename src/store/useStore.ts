@@ -397,13 +397,17 @@ export const useStore = create<ApplicationState>((set, get) => ({
     proExpiresAt: null,
     setIsPro: (isPro, expiresAt) => {
         let exp = expiresAt !== undefined ? expiresAt : get().proExpiresAt;
+        // When explicitly revoking Pro, also clear any future expiry so it can't keep Pro alive
+        if (!isPro && expiresAt === undefined) {
+            exp = null;
+        }
         // If explicitly enabling Pro without a new expiration date, but old stored expiration date is in the past, clear it so it doesn't block Pro
         if (isPro && exp && new Date(exp).getTime() <= Date.now()) {
-            if (expiresAt === undefined) {
-                exp = null;
-            }
+            exp = null;
         }
-        const isActive = Boolean(isPro && (!exp || new Date(exp).getTime() > Date.now()));
+
+        // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
+        const isActive = Boolean((isPro && !exp) || (exp && new Date(exp).getTime() > Date.now()));
         set({ isPro: isActive, proExpiresAt: exp });
         AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
         if (exp) {
@@ -414,7 +418,8 @@ export const useStore = create<ApplicationState>((set, get) => ({
     },
     setProExpiresAt: (expiresAt) => {
         const { isPro } = get();
-        const isActive = Boolean(isPro && (!expiresAt || new Date(expiresAt).getTime() > Date.now()));
+        // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
+        const isActive = Boolean((isPro && !expiresAt) || (expiresAt && new Date(expiresAt).getTime() > Date.now()));
         set({ isPro: isActive, proExpiresAt: expiresAt });
         AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
         if (expiresAt) {
@@ -612,19 +617,23 @@ export const useStore = create<ApplicationState>((set, get) => ({
     redeemPromoCode: async (code: string) => {
         const { userId } = get();
         if (!userId) throw new Error('Please log in or create an account to redeem promo codes.');
-        const api = await import('../services/api');
-        const result = await api.redeemPromoCode(userId, code);
-        if (result.success) {
-            if (result.grantProDays !== undefined && result.grantProDays > 0) {
-                get().setIsPro(true, result.expiresAt || null);
-            } else if (result.isLifetime) {
-                get().setIsPro(true, null);
+        try {
+            const api = await import('../services/api');
+            const result = await api.redeemPromoCode(userId, code);
+            if (result.success) {
+                if (result.grantProDays !== undefined && result.grantProDays > 0) {
+                    get().setIsPro(true, result.expiresAt || null);
+                } else if (result.isLifetime) {
+                    get().setIsPro(true, null);
+                }
+                if (result.newCardCount !== undefined) {
+                    get().setCardCount(result.newCardCount);
+                }
             }
-            if (result.newCardCount !== undefined) {
-                get().setCardCount(result.newCardCount);
-            }
+            return result;
+        } catch (e: any) {
+            return { success: false, message: e?.message || 'Something went wrong. Please try again.' };
         }
-        return result;
     },
 
     loadCardsFromSupabase: async (userId: string) => {
@@ -709,16 +718,15 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 }
                 if (profile.is_pro !== undefined || profile.pro_expires_at !== undefined) {
                     const exp = profile.pro_expires_at || null;
-                    const isRemoteActive = Boolean(profile.is_pro && (!exp || new Date(exp).getTime() > Date.now()));
-                    // Keep Pro active if remote profile confirms it OR if local store is already Pro from an active RevenueCat session
-                    if (isRemoteActive || !get().isPro) {
-                        set({ isPro: isRemoteActive, proExpiresAt: exp });
-                        await AsyncStorage.setItem('@Rumbala_is_pro', isRemoteActive ? 'true' : 'false');
-                        if (exp) {
-                            await AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
-                        } else {
-                            await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
-                        }
+                    // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
+                    const isRemoteActive = Boolean((profile.is_pro && !exp) || (exp && new Date(exp).getTime() > Date.now()));
+                    // Always apply remote state — the database is the source of truth
+                    set({ isPro: isRemoteActive, proExpiresAt: exp });
+                    await AsyncStorage.setItem('@Rumbala_is_pro', isRemoteActive ? 'true' : 'false');
+                    if (exp) {
+                        await AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+                    } else {
+                        await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
                     }
                 }
                 if (profile.last_weekly_claim_at) set({ lastFreeClaimDate: profile.last_weekly_claim_at });
@@ -859,7 +867,8 @@ export const useStore = create<ApplicationState>((set, get) => ({
                 if (data.is_pro !== undefined || data.pro_expires_at !== undefined) {
                     const exp = data.pro_expires_at !== undefined ? data.pro_expires_at : get().proExpiresAt;
                     const isProRaw = data.is_pro !== undefined ? Boolean(data.is_pro) : get().isPro;
-                    const isActive = Boolean(isProRaw && (!exp || new Date(exp).getTime() > Date.now()));
+                    // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
+                    const isActive = Boolean((isProRaw && !exp) || (exp && new Date(exp).getTime() > Date.now()));
                     set({ isPro: isActive, proExpiresAt: exp });
                     AsyncStorage.setItem('@Rumbala_is_pro', isActive ? 'true' : 'false');
                     if (exp) {

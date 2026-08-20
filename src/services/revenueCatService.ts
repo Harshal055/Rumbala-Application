@@ -463,18 +463,17 @@ export async function showCustomerCenter(): Promise<void> {
 
 // ─── Helper: Post-Purchase Card Sync ───────────────────────────
 function handleConsumableSuccess(cardsAdded: number, productId: string, pkg?: any) {
+    // 1. Optimistic Local Update
     const store = useStore.getState();
     const newCount = (store.cardCount || 0) + cardsAdded;
     store.setCardCount(newCount);
 
-    const userId = store.userId;
-    if (userId) {
-        addUserCards(userId, cardsAdded, productId).catch((err: any) => {
-            console.warn('Card sync failed after purchase:', err.message);
-        });
-    }
+    // 🔒 SECURITY UPDATE: We no longer call `addUserCards` to update the DB from the client.
+    // The RevenueCat webhook will hit our Edge Function to securely increment the cards in the DB.
+    // The local store is already updated optimistically above, and the Realtime listener will confirm it.
+
     appendPurchaseHistory(pkg, { productId, type: 'consumable', cardsAdded }).catch(() => null);
-    if (__DEV__) console.log(`🎉 Purchase complete! +${cardsAdded} cards (total: ${newCount})`);
+    if (__DEV__) console.log(`🎉 Purchase complete! +${cardsAdded} cards (optimistic total: ${newCount})`);
 }
 
 async function appendPurchaseHistory(pkg: any, extras: { productId: string; type: 'subscription' | 'consumable'; cardsAdded?: number }) {
