@@ -604,12 +604,12 @@ export default function TabHomeScreen() {
                     </View>
                 )}
 
-                {/* ── Bottom Section ── */}
+                {/* 🌈 Bottom Section 🌈 */}
                 {!currentCard && (
                     <Animated.View
                         entering={FadeInDown.delay(400).duration(600)}
                         renderToHardwareTextureAndroid={Platform.OS === 'android'}
-                        style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 24) }]}
+                        style={[styles.bottomSection, { paddingBottom: Math.max(insets.bottom, 8) + 88 }]}
                     >
                         {/* Vibe Filters */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filtersScroll}>
