@@ -68,7 +68,7 @@ export default function OnboardingScreen() {
     const [selectedRel, setSelectedRel] = useState<string>(savedRel || '');
     const [selectedPurpose, setSelectedPurpose] = useState<string>(savedPurpose || '');
 
-    const TOTAL_SLIDES = 5; // 0: Intro, 1: Privacy, 2: Gender, 3: Relation, 4: Purpose
+    const TOTAL_SLIDES = 3; // 0: Gender, 1: Relation, 2: Purpose
 
     const scrollToSlide = (index: number) => {
         scrollRef.current?.scrollTo({ x: index * width, animated: true });
@@ -137,14 +137,11 @@ export default function OnboardingScreen() {
         }
     };
 
-    const isQuizStep = activeIndex >= 2;
-    const currentQuizStep = activeIndex - 1; // 1, 2, or 3
+    const currentQuizStep = activeIndex + 1; // 1, 2, or 3
     const canProceed = 
-        activeIndex === 0 || 
-        activeIndex === 1 || 
-        (activeIndex === 2 && Boolean(selectedGender)) ||
-        (activeIndex === 3 && Boolean(selectedRel)) ||
-        (activeIndex === 4 && Boolean(selectedPurpose));
+        (activeIndex === 0 && Boolean(selectedGender)) ||
+        (activeIndex === 1 && Boolean(selectedRel)) ||
+        (activeIndex === 2 && Boolean(selectedPurpose));
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
@@ -153,34 +150,22 @@ export default function OnboardingScreen() {
 
                 {/* Header */}
                 <Animated.View entering={FadeInDown.duration(400)} style={[styles.header, glassStyles.header]}>
-                    {isQuizStep ? (
-                        <View style={styles.quizHeaderRow}>
-                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
-                                <Ionicons name="arrow-back" size={20} color="#1a1a1a" />
-                            </TouchableOpacity>
+                    <View style={styles.quizHeaderRow}>
+                        <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container, { opacity: activeIndex === 0 ? 0 : 1 }]} disabled={activeIndex === 0}>
+                            <Ionicons name="arrow-back" size={20} color="#1a1a1a" />
+                        </TouchableOpacity>
 
-                            <View style={styles.stepIndicator}>
-                                <Text style={styles.stepBadgeText}>STEP {currentQuizStep} OF 3</Text>
-                                <View style={styles.progressBarTrack}>
-                                    <View style={[styles.progressBarFill, { width: `${(currentQuizStep / 3) * 100}%` }]} />
-                                </View>
+                        <View style={styles.stepIndicator}>
+                            <Text style={styles.stepBadgeText}>STEP {currentQuizStep} OF 3</Text>
+                            <View style={styles.progressBarTrack}>
+                                <View style={[styles.progressBarFill, { width: `${(currentQuizStep / 3) * 100}%` }]} />
                             </View>
+                        </View>
 
-                            <TouchableOpacity onPress={handleComplete} style={styles.skipBtn}>
-                                <Text style={styles.skipBtnText}>Skip</Text>
-                            </TouchableOpacity>
-                        </View>
-                    ) : (
-                        <View style={styles.introHeaderRow}>
-                            <View style={styles.logoRow}>
-                                <Ionicons name="heart" size={24} color="#FF6B35" />
-                                <Text style={[styles.headerLogoText, { fontFamily: 'Pacifico_400Regular' }]}>Rumbala</Text>
-                            </View>
-                            <TouchableOpacity onPress={() => router.replace('/login')} style={styles.loginQuickLink}>
-                                <Text style={styles.loginQuickLinkText}>Log In</Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
+                        <TouchableOpacity onPress={handleComplete} style={styles.skipBtn}>
+                            <Text style={styles.skipBtnText}>Skip</Text>
+                        </TouchableOpacity>
+                    </View>
                 </Animated.View>
 
                 {/* Content Slides */}
@@ -194,79 +179,6 @@ export default function OnboardingScreen() {
                     keyboardShouldPersistTaps="handled"
                     style={{ flex: 1 }}
                 >
-                    {/* SLIDE 0: INTRO */}
-                    <View style={[styles.slide, { width }]}>
-                        <Animated.View entering={FadeInDown.duration(600)} style={styles.textSection}>
-                            <Text style={styles.title}>
-                                Play <Text style={styles.titleAccent}>Together.</Text>
-                            </Text>
-                            <Text style={styles.subtitle}>
-                                Spice up your connection with personalized romantic dares, challenges and games.
-                            </Text>
-                        </Animated.View>
-
-                        <Animated.View entering={FadeInUp.delay(200)} style={styles.imageCardContainer}>
-                            <View style={[styles.illustrationCard, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.45)' }]}>
-                                <Image 
-                                    source={require('../assets/images/onboarding_couple_v2.png')} 
-                                    style={styles.mainImage} 
-                                    resizeMode="contain" 
-                                />
-                            </View>
-                        </Animated.View>
-
-                        <View style={styles.footerActionContainer}>
-                            <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.85}>
-                                <Text style={styles.primaryBtnText}>Get Started</Text>
-                                <Ionicons name="arrow-forward" size={20} color="#fff" style={{ marginLeft: 8 }} />
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.secondaryBtn} onPress={() => router.replace('/login')}>
-                                <Text style={styles.secondaryBtnText}>I already have an account</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-
-                    {/* SLIDE 1: PRIVACY & TRUST */}
-                    <View style={[styles.slide, { width }]}>
-                        <Animated.View entering={FadeInDown.duration(600)} style={styles.textSection}>
-                            <Text style={styles.title}>
-                                Safe & <Text style={styles.titleAccent}>Private.</Text>
-                            </Text>
-                            <Text style={styles.subtitle}>
-                                Built exclusively for couples. Your personal moments and answers stay private.
-                            </Text>
-                        </Animated.View>
-
-                        <View style={styles.cardsStack}>
-                            <Animated.View entering={FadeInUp.delay(100)} style={[styles.featureCard, glassStyles.container]}>
-                                <View style={[styles.featureIconWrap, { backgroundColor: 'rgba(255, 107, 53, 0.12)' }]}>
-                                    <Ionicons name="shield-checkmark" size={28} color="#FF6B35" />
-                                </View>
-                                <View style={styles.featureTextWrap}>
-                                    <Text style={styles.featureTitle}>End-to-End Encrypted</Text>
-                                    <Text style={styles.featureDesc}>Your card selections and private chats are never readable by third parties.</Text>
-                                </View>
-                            </Animated.View>
-
-                            <Animated.View entering={FadeInUp.delay(200)} style={[styles.featureCard, glassStyles.container]}>
-                                <View style={[styles.featureIconWrap, { backgroundColor: 'rgba(236, 72, 153, 0.12)' }]}>
-                                    <Ionicons name="lock-closed" size={28} color="#EC4899" />
-                                </View>
-                                <View style={styles.featureTextWrap}>
-                                    <Text style={styles.featureTitle}>100% Couple Confidential</Text>
-                                    <Text style={styles.featureDesc}>No intrusive ads, no selling personal data. Just intimate connection.</Text>
-                                </View>
-                            </Animated.View>
-                        </View>
-
-                        <View style={styles.footerActionContainer}>
-                            <TouchableOpacity style={styles.primaryBtn} onPress={handleNext} activeOpacity={0.85}>
-                                <Text style={styles.primaryBtnText}>Personalize My Experience</Text>
-                                <Ionicons name="sparkles" size={18} color="#fff" style={{ marginLeft: 8 }} />
-                            </TouchableOpacity>
-                        </View>
-                    </View>
 
                     {/* SLIDE 2: QUESTION 1 — GENDER */}
                     <View style={[styles.slide, { width }]}>

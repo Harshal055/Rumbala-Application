@@ -19,9 +19,9 @@ export default function Index() {
         return null;
     }
 
-    // 1. If not logged in, go to welcome screen (guest play or login)
+    // 1. If not logged in, go to intro screen
     if (!isAuthenticated) {
-        return <Redirect href="/welcome" />;
+        return <Redirect href="/intro" />;
     }
 
     // 2. If logged in but hasn't completed the questionnaire, ask them now
