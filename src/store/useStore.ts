@@ -40,7 +40,8 @@ interface ApplicationState {
     // Player info
     partner1: string | null;
     partner2: string | null;
-    setPartners: (p1: string, p2: string) => void;
+    partnerEmail: string | null;
+    setPartners: (p1: string, p2: string, pEmail?: string) => void;
     setPartner1: (p1: string) => void;
     setPartner2: (p2: string) => void;
 
@@ -233,23 +234,30 @@ export const useStore = create<ApplicationState>((set, get) => ({
 
     partner1: null,
     partner2: null,
-    setPartners: (p1, p2) => {
-        set({ partner1: p1, partner2: p2 });
-        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1: p1, partner2: p2 }));
+    partnerEmail: null,
+    setPartners: (p1, p2, pEmail) => {
+        set({ partner1: p1, partner2: p2, partnerEmail: pEmail || null });
+        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1: p1, partner2: p2, partnerEmail: pEmail }));
         const userId = get().userId;
-        if (userId) updateProfile(userId, { partner1: p1, partner2: p2 }).catch(console.warn);
+        if (userId) {
+            updateProfile(userId, { 
+                partner1: p1, 
+                partner2: p2, 
+                ...(pEmail ? { partner_email: pEmail } : {}) 
+            }).catch(console.warn);
+        }
     },
     setPartner1: (p1) => {
-        const { partner2 } = get();
+        const { partner2, partnerEmail } = get();
         set({ partner1: p1 });
-        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1: p1, partner2 }));
+        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1: p1, partner2, partnerEmail }));
         const userId = get().userId;
         if (userId) updateProfile(userId, { partner1: p1 }).catch(console.warn);
     },
     setPartner2: (p2) => {
-        const { partner1 } = get();
+        const { partner1, partnerEmail } = get();
         set({ partner2: p2 });
-        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1, partner2: p2 }));
+        AsyncStorage.setItem('@Rumbala_names', JSON.stringify({ partner1, partner2: p2, partnerEmail }));
         const userId = get().userId;
         if (userId) updateProfile(userId, { partner2: p2 }).catch(console.warn);
     },
@@ -547,7 +555,22 @@ export const useStore = create<ApplicationState>((set, get) => ({
     fetchCards: async () => {
         try {
             const api = await import('../services/api');
-            const data = await api.getCmsCards(); // I need to add this to api.ts
+            const uid = get().userId;
+            let data: any = null;
+
+            // For signed-in users, load a deck tailored to their onboarding
+            // answers (server-side, via get_tailored_cards). Falls back to the
+            // full active deck for anonymous users or if tailoring fails.
+            if (uid) {
+                try {
+                    data = await api.getTailoredCards({ limit: 300 });
+                } catch (e) {
+                    if (__DEV__) console.warn('Tailored deck fetch failed, using full deck', e);
+                }
+            }
+            if (!data || data.length === 0) {
+                data = await api.getCmsCards();
+            }
             if (data) set({ cards: data });
         } catch (e) { console.warn('Card fetch failed', e); }
     },
@@ -681,29 +704,48 @@ export const useStore = create<ApplicationState>((set, get) => ({
             console.warn('Error loading scores from Supabase:', error);
         }
     },
-
-    syncWithSupabase: async () => {
+syncWithSupabase: async () => {
         const userId = get().userId;
         if (!userId) return;
         try {
             const profile = await ensureProfileExists(userId);
             if (profile) {
-                const { partner1: localP1, partner2: localP2 } = get();
+                const { partner1: localP1, partner2: localP2, partnerEmail: localPEmail } = get();
                 const updates: any = {};
                 if (!profile.partner1 && localP1) updates.partner1 = localP1;
                 if (!profile.partner2 && localP2) updates.partner2 = localP2;
+                if (!profile.partner_email && localPEmail) updates.partner_email = localPEmail;
                 if (get().selectedVibe && profile.vibe !== get().selectedVibe) {
                     updates.vibe = get().selectedVibe;
                 }
+
                 if (Object.keys(updates).length > 0) {
-                    await updateProfile(userId, updates);
+                    await updateProfile(userId, updates).catch(console.warn);
                 }
-                if (profile.vibe && !get().selectedVibe) {
+
+                if (profile.vibe) {
                     set({ selectedVibe: profile.vibe });
                     await AsyncStorage.setItem('@Rumbala_vibe', profile.vibe);
                 }
                 if (profile.partner1) set({ partner1: profile.partner1 });
                 if (profile.partner2) set({ partner2: profile.partner2 });
+                if (profile.partner_email) set({ partnerEmail: profile.partner_email });
+
+                // Read back onboarding answers from the profile row so a fresh
+                // install / new device recovers them even if local storage and
+                // auth metadata are empty.
+                if (profile.gender && !get().gender) {
+                    set({ gender: profile.gender });
+                    AsyncStorage.setItem('@Rumbala_gender', profile.gender).catch(() => {});
+                }
+                if (profile.relationship_status && !get().relationshipStatus) {
+                    set({ relationshipStatus: profile.relationship_status });
+                    AsyncStorage.setItem('@Rumbala_relationship_status', profile.relationship_status).catch(() => {});
+                }
+                if (profile.app_purpose && !get().appPurpose) {
+                    set({ appPurpose: profile.app_purpose });
+                    AsyncStorage.setItem('@Rumbala_app_purpose', profile.app_purpose).catch(() => {});
+                }
 
                 // Sync onboarding questionnaire preferences to Supabase
                 syncOnboardingPreferencesToSupabase(userId, {
@@ -1025,8 +1067,8 @@ export const useStore = create<ApplicationState>((set, get) => ({
             const namesJson = cache['@Rumbala_names'];
             if (namesJson) {
                 try {
-                    const { partner1, partner2 } = JSON.parse(namesJson);
-                    set({ partner1, partner2 });
+                    const { partner1, partner2, partnerEmail } = JSON.parse(namesJson);
+                    set({ partner1, partner2, partnerEmail });
                 } catch (e) {}
             }
 

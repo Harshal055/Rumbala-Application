@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useStore } from '../src/store/useStore';
+import * as Haptics from 'expo-haptics';
 import { loginV2, setTokens } from '../src/services/api';
 import { supabase } from '../src/services/supabase';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
@@ -80,7 +81,9 @@ export default function LoginScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.partner1) {
+                router.replace('/welcome');
+            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
@@ -91,28 +94,33 @@ export default function LoginScreen() {
             if (error?.code !== statusCodes.SIGN_IN_CANCELLED) {
                 showAlert('Sign-In Error', error.message || 'We couldn\'t sign you in with Google. Please try again.');
             }
-        } finally { setGoogleLoading(false); }
+        } finally {
+            setGoogleLoading(false);
+        }
     };
 
     const handleBack = () => {
         if (router.canGoBack()) router.back();
-        else router.replace('/welcome');
+        else router.replace('/intro');
     };
 
     const handleLogin = async () => {
-        if (!email.trim() || !password) { 
-            showAlert('Missing Information', 'Please enter both email and password.'); 
-            return; 
+        if (!email.trim() || !password) {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            showAlert('Missing Information', 'Please enter your email and password.');
+            return;
         }
+
         setIsLoading(true);
         try {
-            const result = await loginV2(email.trim().toLowerCase(), password);
-            if (result.session?.access_token && result.session?.refresh_token) {
-                setTokens(result.session.access_token, result.session.refresh_token);
-            }
+            await loginV2(email.trim().toLowerCase(), password);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+            
             // Store is already updated by postAuthSync inside loginV2
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.partner1) {
+                router.replace('/welcome');
+            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');

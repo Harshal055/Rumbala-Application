@@ -1,4 +1,5 @@
 import { CardType, DareCard } from '../constants/cards';
+import { supabase } from './supabase';
 
 export interface AIDareOptions {
     prompt?: string;
@@ -174,9 +175,59 @@ const GENERIC_TEMPLATES: Record<CardType, string[]> = {
 };
 
 /**
- * Synthesize a custom AI dare based on couple context, prompt, mood, and intensity
+ * Real AI generation via the Groq-backed Edge Function `groq-ai-dare`.
+ * The Groq key stays server-side; this only calls our function (auth handled by
+ * the supabase client's session). The function also saves the dare to ai_dares
+ * and returns its row id as `remoteId` so it can be rated later.
+ * Returns null on any failure so the caller can fall back to local templates.
+ */
+async function generateRemoteDare(options: AIDareOptions): Promise<DareCard | null> {
+    const { data, error } = await supabase.functions.invoke('groq-ai-dare', {
+        body: {
+            prompt: options.prompt || '',
+            mood: options.mood || '',
+            vibe: options.vibe || 'spicy',
+            intensity: options.intensity || 2,
+            partner1: options.partner1 || 'Partner 1',
+            partner2: options.partner2 || 'Partner 2',
+        },
+    });
+    if (error) throw error;
+    const text: string | undefined = data?.text;
+    if (!text) return null;
+
+    const vibe = (options.vibe || 'spicy') as CardType;
+    const intensity = options.intensity || 2;
+    return {
+        id: `ai_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+        remoteId: data?.id || undefined,
+        type: vibe,
+        vibe,
+        text,
+        intensity,
+        timer: intensity >= 2 ? 60 : undefined,
+    };
+}
+
+/**
+ * Public entry point. Tries real AI (server-side Groq) first; on any failure
+ * (offline, not configured, quota, etc.) falls back to the local curated
+ * templates so the feature always works.
  */
 export async function generateAIDare(options: AIDareOptions): Promise<DareCard> {
+    try {
+        const remote = await generateRemoteDare(options);
+        if (remote) return remote;
+    } catch (e) {
+        // Silent fallback to local templates.
+    }
+    return generateLocalDare(options);
+}
+
+/**
+ * Synthesize a custom dare locally from curated templates (offline fallback).
+ */
+export async function generateLocalDare(options: AIDareOptions): Promise<DareCard> {
     const p1 = options.partner1?.trim() || 'Partner 1';
     const p2 = options.partner2?.trim() || 'Partner 2';
     const vibe = options.vibe || 'spicy';

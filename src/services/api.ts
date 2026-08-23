@@ -210,7 +210,7 @@ export const ensureProfileExists = async (userId: string, email?: string) => {
 
 export const updateProfile = async (
     userId: string,
-    updates: { partner1?: string; partner2?: string; card_count?: number; vibe?: string },
+    updates: { partner1?: string; partner2?: string; partner_email?: string; card_count?: number; vibe?: string },
 ) => {
     const { data, error } = await supabase
         .from('profiles')
@@ -237,8 +237,20 @@ export const syncOnboardingPreferencesToSupabase = async (
             await supabase.auth.updateUser({ data: metadataUpdates });
         }
 
-        if (prefs.vibe && userId) {
-            await supabase.from('profiles').update({ vibe: prefs.vibe }).eq('id', userId);
+        // Persist to the profiles table so the answers are first-class,
+        // queryable per-user data (admin panel / analytics), not just auth
+        // metadata. These columns are added in
+        // 20260822000000_add_onboarding_columns.sql and are NOT guarded by the
+        // restrict_sensitive_profile_updates trigger, so the client may write
+        // them under the profiles_update_own RLS policy.
+        const profileUpdates: Record<string, any> = {};
+        if (prefs.gender) profileUpdates.gender = prefs.gender;
+        if (prefs.relationship_status) profileUpdates.relationship_status = prefs.relationship_status;
+        if (prefs.app_purpose) profileUpdates.app_purpose = prefs.app_purpose;
+        if (prefs.vibe) profileUpdates.vibe = prefs.vibe;
+
+        if (userId && Object.keys(profileUpdates).length > 0) {
+            await supabase.from('profiles').update(profileUpdates).eq('id', userId);
         }
     } catch (e) {
         console.warn('Failed to sync onboarding preferences to Supabase:', e);
@@ -1183,6 +1195,52 @@ export const getCmsCards = async () => {
         .eq('is_active', true);
     if (error) throw new Error(error.message);
     return data;
+};
+
+// Server-side tailored deck: filters/orders the active cards by the logged-in
+// user's onboarding answers (profiles.app_purpose / relationship_status) via the
+// get_tailored_cards RPC (20260822010000). Requires an authenticated session.
+// Pass maxIntensity: 3 to disable the intensity cap when the user explicitly
+// selects a vibe.
+export const getTailoredCards = async (opts?: {
+    limit?: number;
+    vibe?: string | null;
+    maxIntensity?: number | null;
+}) => {
+    const { data, error } = await supabase.rpc('get_tailored_cards', {
+        p_limit: opts?.limit ?? 200,
+        p_vibe_override: opts?.vibe ?? null,
+        p_max_intensity: opts?.maxIntensity ?? null,
+    });
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+// ─── AI DARES ─────────────────────────────────────────────────────────────────
+// Dares are generated + saved server-side by the groq-ai-dare Edge Function.
+// These helpers read the user's own AI dares and let them rate one.
+
+export const getMyAiDares = async (userId: string, limit = 50) => {
+    if (!userId) throw new Error('User ID is required for getMyAiDares');
+    const { data, error } = await supabase
+        .from('ai_dares')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const rateAiDare = async (dareId: string, rating: -1 | 0 | 1) => {
+    if (!dareId) throw new Error('dareId is required to rate a dare');
+    // RLS restricts this update to the dare's owner.
+    const { error } = await supabase
+        .from('ai_dares')
+        .update({ rating })
+        .eq('id', dareId);
+    if (error) throw new Error(error.message);
+    return { success: true };
 };
 
 

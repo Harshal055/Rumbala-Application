@@ -103,6 +103,15 @@ serve(async (req) => {
 
             console.log(`Setting user ${userId} Pro status to ${isPro} with expiry ${expiresAt}`);
             
+            // First, get the user's profile to check for a partner_email
+            const { data: profile } = await supabase
+                .from('profiles')
+                .select('partner_email')
+                .eq('id', userId)
+                .single();
+            
+            const partnerEmail = profile?.partner_email;
+
             const { error } = await supabase
                 .from('profiles')
                 .update({ 
@@ -115,6 +124,24 @@ serve(async (req) => {
             if (error) {
                 console.error('Error updating Pro status:', error);
                 return new Response("Error updating database", { status: 500 });
+            }
+
+            // If a partner email is set, also grant them Pro
+            if (partnerEmail) {
+                console.log(`Granting Pro to partner: ${partnerEmail}`);
+                const { error: partnerError } = await supabase
+                    .from('profiles')
+                    .update({ 
+                        is_pro: isPro, 
+                        pro_expires_at: expiresAt,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('email', partnerEmail);
+                
+                if (partnerError) {
+                    console.error('Error updating partner Pro status:', partnerError);
+                    // Do not fail the whole request just because partner failed
+                }
             }
         }
 

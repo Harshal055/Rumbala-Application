@@ -31,9 +31,11 @@ export default function WelcomeScreen() {
     const { setSelectedVibe, setPartners, showAlert } = useStore();
     const [partner1, setPartner1] = useState('');
     const [partner2, setPartner2] = useState('');
+    const [partnerEmail, setPartnerEmail] = useState('');
     const [vibe, setVibe] = useState<'fun' | 'romantic' | 'spicy'>('fun');
     const [name1Focused, setName1Focused] = useState(false);
     const [name2Focused, setName2Focused] = useState(false);
+    const [emailFocused, setEmailFocused] = useState(false);
 
     const handleStart = async () => {
         if (!partner1.trim()) {
@@ -45,10 +47,10 @@ export default function WelcomeScreen() {
         try {
             const defaultCards = getInitialFreeCards();
             await AsyncStorage.setItem('@Rumbala_owned_cards', JSON.stringify(defaultCards));
-            setPartners(partner1.trim(), partner2.trim());
+            setPartners(partner1.trim(), partner2.trim(), partnerEmail.trim());
             await AsyncStorage.setItem('@Rumbala_mode', 'local');
             setSelectedVibe(vibe);
-            router.replace('/login');
+            router.replace('/');
         } catch {
             showAlert('Error', 'Something went wrong while setting up your profile. Please try again.');
         }
@@ -132,6 +134,26 @@ export default function WelcomeScreen() {
                                         autoCorrect={false}
                                         onFocus={() => setName2Focused(true)}
                                         onBlur={() => setName2Focused(false)}
+                                    />
+                                </View>
+                            </View>
+
+                            {/* Partner Email */}
+                            <View style={styles.inputGroup}>
+                                <Text style={styles.label}>Partner's Email (Optional)</Text>
+                                <View style={[styles.inputRow, glassStyles.container, emailFocused && styles.inputRowFocused]}>
+                                    <Ionicons name="mail-outline" size={18} color={emailFocused ? '#FF6B35' : '#888'} />
+                                    <TextInput
+                                        style={styles.input}
+                                        placeholder="partner@example.com"
+                                        placeholderTextColor="#999"
+                                        value={partnerEmail}
+                                        onChangeText={setPartnerEmail}
+                                        autoCapitalize="none"
+                                        keyboardType="email-address"
+                                        autoCorrect={false}
+                                        onFocus={() => setEmailFocused(true)}
+                                        onBlur={() => setEmailFocused(false)}
                                     />
                                 </View>
                             </View>

@@ -30,9 +30,36 @@ interface UserProfile {
   pro_expires_at?: string | null;
   streak_count?: number;
   vibe?: string;
+  gender?: string;
+  relationship_status?: string;
+  app_purpose?: string;
   created_at?: string;
   updated_at?: string;
 }
+
+// Onboarding answer id -> friendly label (mirrors app/onboarding.tsx)
+const GENDER_LABELS: Record<string, string> = {
+  male: 'Male',
+  female: 'Female',
+  'non-binary': 'Non-binary / Other',
+  prefer_not_to_say: 'Prefer not to say',
+};
+const REL_LABELS: Record<string, string> = {
+  dating: 'Dating',
+  married: 'Married / Engaged',
+  ldr: 'Long Distance',
+  single: 'Single',
+  complicated: "It's Complicated",
+};
+const PURPOSE_LABELS: Record<string, string> = {
+  spice: 'Spice Up Romance',
+  fun: 'Fun & Laughter',
+  deep: 'Deep Connection',
+  ldr: 'Stay Connected (LDR)',
+  fantasies: 'Explore Fantasies',
+};
+const labelFor = (map: Record<string, string>, key?: string) =>
+  key ? map[key] || key : '—';
 
 export function checkProStatus(isPro?: boolean, expiresAt?: string | null) {
   if (!isPro) return { isActive: false, isExpired: false, label: 'Free Tier', badgeCls: 'bg-slate-800 text-slate-400 border-slate-700' };
@@ -293,6 +320,7 @@ export const UsersView: React.FC = () => {
               <thead className="bg-slate-900/80 text-xs uppercase text-slate-400 border-b border-white/[0.08]">
                 <tr>
                   <th className="p-4 font-semibold">User & Partners</th>
+                  <th className="p-4 font-semibold">Profile</th>
                   <th className="p-4 font-semibold">Account ID</th>
                   <th className="p-4 font-semibold">Plan Status</th>
                   <th className="p-4 font-semibold">Card Balance</th>
@@ -303,13 +331,13 @@ export const UsersView: React.FC = () => {
               <tbody className="divide-y divide-white/[0.05]">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
                       Loading users from Supabase...
                     </td>
                   </tr>
                 ) : filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-500">
+                    <td colSpan={7} className="p-8 text-center text-slate-500">
                       No matching user records found.
                     </td>
                   </tr>
@@ -332,6 +360,23 @@ export const UsersView: React.FC = () => {
                           <div className="text-xs text-slate-400 font-mono mt-0.5">
                             {u.email || 'Anonymous Account'}
                           </div>
+                        </td>
+                        <td className="p-4">
+                          {(u.gender || u.relationship_status || u.app_purpose) ? (
+                            <div className="flex flex-col gap-1 text-[11px]">
+                              {u.gender && (
+                                <span className="text-slate-300">👤 {labelFor(GENDER_LABELS, u.gender)}</span>
+                              )}
+                              {u.relationship_status && (
+                                <span className="text-slate-300">💞 {labelFor(REL_LABELS, u.relationship_status)}</span>
+                              )}
+                              {u.app_purpose && (
+                                <span className="text-slate-300">🎯 {labelFor(PURPOSE_LABELS, u.app_purpose)}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-600">Not set</span>
+                          )}
                         </td>
                         <td className="p-4 font-mono text-xs text-slate-400 max-w-[130px] truncate" title={u.id}>
                           {u.id}
@@ -390,6 +435,18 @@ export const UsersView: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-slate-400">UUID:</span>
                   <span className="font-mono text-slate-400 truncate max-w-[200px]" title={selectedUser.id}>{selectedUser.id}</span>
+                </div>
+                <div className="flex justify-between items-center pt-1 border-t border-white/[0.06]">
+                  <span className="text-slate-400">Gender:</span>
+                  <span className="font-bold text-white">{labelFor(GENDER_LABELS, selectedUser.gender)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Relationship:</span>
+                  <span className="font-bold text-white">{labelFor(REL_LABELS, selectedUser.relationship_status)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-400">Main Goal:</span>
+                  <span className="font-bold text-white">{labelFor(PURPOSE_LABELS, selectedUser.app_purpose)}</span>
                 </div>
                 <div className="flex justify-between items-center pt-1 border-t border-white/[0.06]">
                   <span className="text-slate-400">Current Status:</span>

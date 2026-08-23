@@ -40,7 +40,7 @@ export default function IntroScreen() {
         if (activeIndex < TOTAL_SLIDES - 1) {
             scrollToSlide(activeIndex + 1);
         } else {
-            router.replace('/welcome');
+            router.replace('/login');
         }
     };
 

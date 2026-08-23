@@ -21,6 +21,7 @@ import { useRouter } from 'expo-router';
 import { typography } from '../../src/constants/typography';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import PaywallModal from '../../src/components/PaywallModal';
+import { generateAIDare } from '../../src/services/aiDareService';
 import { getOfferings, purchasePackage, getCustomerInfo, getProEntitlementDetails } from '../../src/services/revenueCatService';
 import AnimatedBackground from '../../src/components/AnimatedBackground';
 import { glassStyles, glassTokens, brandGradient } from '../../src/constants/glass';
@@ -114,6 +115,7 @@ export default function TabHomeScreen() {
     const [cardsPlayed, setCardsPlayed] = useState(0);
     const [showCamera, setShowCamera] = useState(false);
     const [showPaywall, setShowPaywall] = useState(false);
+    const [aiGenerating, setAiGenerating] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const [hintRevealed, setHintRevealed] = useState(false);
     const confettiRef = useRef<LottieView>(null);
@@ -182,6 +184,33 @@ export default function TabHomeScreen() {
         position: 'absolute' as const, top: '38%', alignSelf: 'center' as const, zIndex: 100
     }));
 
+    // Free, unlimited AI dare generation — used when a user runs out of cards.
+    // The dare is generated server-side (Groq) and saved to ai_dares; on any
+    // failure generateAIDare falls back to local templates so it always works.
+    const handleAiDare = async () => {
+        if (aiGenerating) return;
+        setAiGenerating(true);
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+            const dare = await generateAIDare({
+                vibe: (selectedVibe as any) || 'spicy',
+                intensity: selectedIntensity || 2,
+                partner1: partner1 || 'Partner 1',
+                partner2: partner2 || 'Partner 2',
+            });
+            setCurrentCard(dare);
+            setIsFlipped(false);
+            setCardsPlayed(p => p + 1);
+            setHintRevealed(false);
+            useStore.getState().updateStreak();
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        } catch (e) {
+            showAlert('AI Unavailable', 'Could not generate a dare right now. Please try again in a moment.');
+        } finally {
+            setAiGenerating(false);
+        }
+    };
+
     const handleDrawCard = async () => {
         const store = useStore.getState();
 
@@ -198,7 +227,8 @@ export default function TabHomeScreen() {
 
         // Out of cards check ONLY applies to non-Pro users!
         if (!store.isPro && store.cardCount <= 0) {
-            showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck or upgrade to Pro for unlimited cards!', [
+            showAlert('Out of Dares!', 'You\'ve played all your current cards. Generate a fresh one with AI for free, reload from the shop, or upgrade to Pro!', [
+                { text: '✨ Generate with AI', onPress: () => handleAiDare() },
                 { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
                 { text: 'Not right now', style: 'cancel' }
             ]);
@@ -212,7 +242,8 @@ export default function TabHomeScreen() {
 
         if (!drawn) {
             if (!store.isPro) {
-                showAlert('Out of Dares!', 'You\'ve played all your current cards. Head to the shop to reload your deck and keep the fun going.', [
+                showAlert('Out of Dares!', 'You\'ve played all your current cards. Generate a fresh one with AI for free, or reload from the shop.', [
+                    { text: '✨ Generate with AI', onPress: () => handleAiDare() },
                     { text: 'Go to Shop', onPress: () => router.push('/(tabs)/shop') },
                     { text: 'Not right now', style: 'cancel' }
                 ]);

@@ -87,7 +87,9 @@ export default function SignupScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.partner1) {
+                router.replace('/welcome');
+            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
@@ -104,7 +106,7 @@ export default function SignupScreen() {
     const handleBack = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (router.canGoBack()) router.back();
-        else router.replace('/login');
+        else router.replace('/intro');
     };
 
     const handleSignup = async () => {
@@ -125,7 +127,9 @@ export default function SignupScreen() {
                 router.push('/login');
             } else {
                 const state = useStore.getState();
-                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                if (!state.partner1) {
+                    router.replace('/welcome');
+                } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                     router.replace('/onboarding');
                 } else {
                     router.replace('/subscription');

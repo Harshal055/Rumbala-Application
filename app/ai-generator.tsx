@@ -14,6 +14,7 @@ import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
 import { useStore } from '../src/store/useStore';
 import { MOOD_PRESETS, generateAIDare, MoodPreset } from '../src/services/aiDareService';
+import { rateAiDare } from '../src/services/api';
 import { DareCard } from '../src/constants/cards';
 
 const BG_COLORS = ['#FFF5F5', '#FFF0F5', '#F5F3FF', '#FFF8F0'];
@@ -28,6 +29,7 @@ export default function AIDareGeneratorScreen() {
     const [isGenerating, setIsGenerating] = useState<boolean>(false);
     const [generatedDare, setGeneratedDare] = useState<DareCard | null>(null);
     const [savedToFavs, setSavedToFavs] = useState<boolean>(false);
+    const [dareRating, setDareRating] = useState<-1 | 0 | 1>(0);
 
     const activePreset = MOOD_PRESETS.find(m => m.key === selectedMood) || MOOD_PRESETS[0];
 
@@ -41,6 +43,7 @@ export default function AIDareGeneratorScreen() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setIsGenerating(true);
         setSavedToFavs(false);
+        setDareRating(0);
 
         try {
             const dare = await generateAIDare({
@@ -57,6 +60,19 @@ export default function AIDareGeneratorScreen() {
             showAlert('Generation Failed', 'Please try again in a moment.');
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    const handleRate = async (rating: -1 | 1) => {
+        if (!generatedDare?.remoteId) return;
+        const next = dareRating === rating ? 0 : rating; // toggle off if same
+        setDareRating(next);
+        Haptics.selectionAsync().catch(() => {});
+        try {
+            await rateAiDare(generatedDare.remoteId, next);
+        } catch (e) {
+            // Non-blocking: revert on failure
+            setDareRating(dareRating);
         }
     };
 
@@ -139,6 +155,26 @@ export default function AIDareGeneratorScreen() {
                                         <View style={styles.timerBadge}>
                                             <Ionicons name="time-outline" size={14} color="#FF6B35" />
                                             <Text style={styles.timerBadgeText}>{generatedDare.timer}s countdown</Text>
+                                        </View>
+                                    )}
+
+                                    {generatedDare.remoteId && (
+                                        <View style={styles.rateRow}>
+                                            <Text style={styles.rateLabel}>Rate this dare</Text>
+                                            <TouchableOpacity
+                                                style={[styles.rateBtn, dareRating === 1 && styles.rateBtnUp]}
+                                                onPress={() => handleRate(1)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Ionicons name={dareRating === 1 ? 'thumbs-up' : 'thumbs-up-outline'} size={18} color={dareRating === 1 ? '#10B981' : '#666'} />
+                                            </TouchableOpacity>
+                                            <TouchableOpacity
+                                                style={[styles.rateBtn, dareRating === -1 && styles.rateBtnDown]}
+                                                onPress={() => handleRate(-1)}
+                                                activeOpacity={0.7}
+                                            >
+                                                <Ionicons name={dareRating === -1 ? 'thumbs-down' : 'thumbs-down-outline'} size={18} color={dareRating === -1 ? '#EF4444' : '#666'} />
+                                            </TouchableOpacity>
                                         </View>
                                     )}
 
@@ -405,6 +441,36 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         color: '#FF6B35',
+    },
+    rateRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 12,
+    },
+    rateLabel: {
+        flex: 1,
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#888',
+    },
+    rateBtn: {
+        width: 40,
+        height: 40,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.04)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.06)',
+    },
+    rateBtnUp: {
+        backgroundColor: 'rgba(16, 185, 129, 0.12)',
+        borderColor: 'rgba(16, 185, 129, 0.4)',
+    },
+    rateBtnDown: {
+        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+        borderColor: 'rgba(239, 68, 68, 0.4)',
     },
     resultActionRow: {
         flexDirection: 'row',

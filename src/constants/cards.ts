@@ -7,6 +7,7 @@ export interface DareCard {
   text: string;
   timer?: number; // Optional timer in seconds for timed dares
   intensity?: number; // 1 = Mild, 2 = Hot, 3 = Extreme
+  remoteId?: string; // ai_dares row id when generated server-side (for rating)
 }
 
 export const CARDS: DareCard[] = [
