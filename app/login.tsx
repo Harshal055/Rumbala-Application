@@ -80,8 +80,13 @@ export default function LoginScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (state.isPro || state.hasSeenSubscription) router.replace('/(tabs)');
-            else router.replace('/subscription');
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                router.replace('/onboarding');
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
+            } else {
+                router.replace('/subscription');
+            }
         } catch (error: any) {
             if (error?.code !== statusCodes.SIGN_IN_CANCELLED) {
                 showAlert('Sign-In Error', error.message || 'We couldn\'t sign you in with Google. Please try again.');
@@ -91,7 +96,7 @@ export default function LoginScreen() {
 
     const handleBack = () => {
         if (router.canGoBack()) router.back();
-        else router.replace('/onboarding');
+        else router.replace('/welcome');
     };
 
     const handleLogin = async () => {
@@ -107,8 +112,13 @@ export default function LoginScreen() {
             }
             // Store is already updated by postAuthSync inside loginV2
             const state = useStore.getState();
-            if (state.isPro || state.hasSeenSubscription) router.replace('/(tabs)');
-            else router.replace('/subscription');
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                router.replace('/onboarding');
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
+            } else {
+                router.replace('/subscription');
+            }
         } catch (error: any) { 
             showAlert('Login Failed', error.message || 'Check your credentials and try again.'); 
         }
@@ -117,7 +127,7 @@ export default function LoginScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
                 
                 <Animated.View 

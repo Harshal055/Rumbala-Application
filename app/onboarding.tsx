@@ -99,30 +99,42 @@ export default function OnboardingScreen() {
         }
     };
 
-    const handleComplete = () => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-        
-        // Save preferences
-        setOnboardingPreferences({
-            gender: selectedGender || 'prefer_not_to_say',
-            relationshipStatus: selectedRel || 'dating',
-            appPurpose: selectedPurpose || 'fun',
-        });
+    const handleComplete = async () => {
+        try {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            
+            // Save preferences
+            setOnboardingPreferences({
+                gender: selectedGender || 'prefer_not_to_say',
+                relationshipStatus: selectedRel || 'dating',
+                appPurpose: selectedPurpose || 'fun',
+            });
 
-        // Tailor default vibe/mode based on purpose
-        if (selectedPurpose === 'spice') {
-            setSelectedVibe('spicy');
-        } else if (selectedPurpose === 'fun') {
-            setSelectedVibe('fun');
-        } else if (selectedPurpose === 'ldr' || selectedRel === 'ldr') {
-            setMode('ldr');
-            setSelectedVibe('romantic');
-        } else {
-            setSelectedVibe('romantic');
+            // Tailor default vibe/mode based on purpose
+            if (selectedPurpose === 'spice') {
+                setSelectedVibe('spicy');
+            } else if (selectedPurpose === 'fun') {
+                setSelectedVibe('fun');
+            } else if (selectedPurpose === 'ldr' || selectedRel === 'ldr') {
+                setMode('ldr');
+                setSelectedVibe('romantic');
+            } else {
+                setSelectedVibe('romantic');
+            }
+
+            setHasSeenOnboarding(true);
+            
+            const state = useStore.getState();
+            if (!state.isAuthenticated) {
+                router.replace('/welcome');
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
+            } else {
+                router.replace('/subscription');
+            }
+        } catch (error) {
+            console.error('Error during onboarding completion:', error);
         }
-
-        setHasSeenOnboarding(true);
-        router.replace('/login');
     };
 
     const isQuizStep = activeIndex >= 2;

@@ -57,7 +57,7 @@ export default function WelcomeScreen() {
     const handleBack = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         if (router.canGoBack()) router.back();
-        else router.replace('/onboarding');
+        else router.replace('/');
     };
 
     return (

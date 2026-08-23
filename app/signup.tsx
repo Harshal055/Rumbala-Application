@@ -87,8 +87,13 @@ export default function SignupScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (state.isPro || state.hasSeenSubscription) router.replace('/(tabs)');
-            else router.replace('/subscription');
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                router.replace('/onboarding');
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
+            } else {
+                router.replace('/subscription');
+            }
         } catch (error: any) {
             if (error?.code !== statusCodes.SIGN_IN_CANCELLED) {
                 showAlert('Sign-In Error', error.message || 'We couldn\'t sign you in with Google. Please try again.');
@@ -119,7 +124,12 @@ export default function SignupScreen() {
                 showAlert('Email Verification', result.message || 'A confirmation email has been sent to your address.');
                 router.push('/login');
             } else {
-                router.replace('/subscription');
+                const state = useStore.getState();
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/subscription');
+                }
             }
         } catch (error: any) {
             showAlert('Registration Error', error.message || 'We couldn\'t create your account. Please try again.');
@@ -130,7 +140,7 @@ export default function SignupScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <KeyboardAvoidingView 
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
                     style={{ flex: 1 }}
