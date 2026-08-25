@@ -87,10 +87,10 @@ export default function SignupScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.partner1) {
-                router.replace('/welcome');
-            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
+            } else if (!state.partner1) {
+                router.replace('/welcome');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {
@@ -127,10 +127,10 @@ export default function SignupScreen() {
                 router.push('/login');
             } else {
                 const state = useStore.getState();
-                if (!state.partner1) {
-                    router.replace('/welcome');
-                } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                     router.replace('/onboarding');
+                } else if (!state.partner1) {
+                    router.replace('/welcome');
                 } else {
                     router.replace('/subscription');
                 }

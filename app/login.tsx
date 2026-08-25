@@ -81,10 +81,10 @@ export default function LoginScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.partner1) {
-                router.replace('/welcome');
-            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
+            } else if (!state.partner1) {
+                router.replace('/welcome');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {
@@ -118,10 +118,10 @@ export default function LoginScreen() {
             
             // Store is already updated by postAuthSync inside loginV2
             const state = useStore.getState();
-            if (!state.partner1) {
-                router.replace('/welcome');
-            } else if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                 router.replace('/onboarding');
+            } else if (!state.partner1) {
+                router.replace('/welcome');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {

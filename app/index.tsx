@@ -25,14 +25,14 @@ export default function Index() {
         return <Redirect href="/intro" />;
     }
 
-    // 2. If logged in but missing names, go to welcome screen
-    if (!partner1) {
-        return <Redirect href="/welcome" />;
-    }
-
-    // 3. If logged in but hasn't completed the questionnaire, ask them now
+    // 2. If logged in but hasn't completed the questionnaire, ask them now
     if (!gender || !relationshipStatus || !appPurpose) {
         return <Redirect href="/onboarding" />;
+    }
+
+    // 3. If logged in but missing names, go to welcome screen
+    if (!partner1) {
+        return <Redirect href="/welcome" />;
     }
 
     // 4. Go straight to home
