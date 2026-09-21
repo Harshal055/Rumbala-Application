@@ -5,7 +5,7 @@ import {
     getUserCards, addUserCards, getProfile, updateProfile,
     addPoints as apiAddPoints, getScores as apiGetScores,
     claimWeeklyFreeCards, getHistory as apiGetHistory,
-    addHistoryEntry as apiAddHistoryEntry, syncCardCount, ensureProfileExists,
+    addHistoryEntry as apiAddHistoryEntry, syncCardCount, spendCard, ensureProfileExists,
     getAppRemoteConfigs, subscribeToRemoteConfigs, AppRemoteConfigs,
     syncOnboardingPreferencesToSupabase
 } from '../services/api';
@@ -459,6 +459,14 @@ export const useStore = create<ApplicationState>((set, get) => ({
         }
         AsyncStorage.setItem('@Rumbala_streak_count', String(get().streak));
         AsyncStorage.setItem('@Rumbala_last_active', todayStr);
+
+        // Persist streak to the database (own-row; not blocked by the profile
+        // trigger). Best-effort — device state already updated above.
+        const uid = get().userId;
+        if (uid) {
+            updateProfile(uid, { streak_count: get().streak, last_active: todayStr }).catch(() => {});
+        }
+
         get().checkMilestones();
     },
 
@@ -626,7 +634,16 @@ export const useStore = create<ApplicationState>((set, get) => ({
             get().setCardCount(newCount);
             const { userId, isAuthenticated } = get();
             if (userId && isAuthenticated) {
-                syncCardCount(userId, newCount).catch(console.warn);
+                // Persist via the spend_card RPC — a direct card_count write is
+                // rejected by the anti-cheat trigger. Reconcile with the server's
+                // authoritative balance on success.
+                spendCard(userId)
+                    .then((serverCount) => {
+                        if (typeof serverCount === 'number' && !Number.isNaN(serverCount)) {
+                            get().setCardCount(serverCount);
+                        }
+                    })
+                    .catch((e) => { if (__DEV__) console.warn('spendCard failed', e); });
             }
         }
         return drawn;
@@ -745,6 +762,17 @@ syncWithSupabase: async () => {
                 if (profile.app_purpose && !get().appPurpose) {
                     set({ appPurpose: profile.app_purpose });
                     AsyncStorage.setItem('@Rumbala_app_purpose', profile.app_purpose).catch(() => {});
+                }
+
+                // Restore streak from the DB if the server has a higher value
+                // (e.g. fresh install / new device).
+                if (typeof profile.streak_count === 'number' && profile.streak_count > (get().streak || 0)) {
+                    set({ streak: profile.streak_count });
+                    AsyncStorage.setItem('@Rumbala_streak_count', String(profile.streak_count)).catch(() => {});
+                    if (profile.last_active) {
+                        set({ lastActiveDate: profile.last_active });
+                        AsyncStorage.setItem('@Rumbala_last_active', profile.last_active).catch(() => {});
+                    }
                 }
 
                 // Sync onboarding questionnaire preferences to Supabase

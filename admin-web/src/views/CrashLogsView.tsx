@@ -4,7 +4,6 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../co
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Badge } from '../components/ui/badge';
-import { Dialog } from '../components/ui/dialog';
 import {
   AlertTriangle,
   Bug,
@@ -407,7 +406,7 @@ export const CrashLogsView: React.FC = () => {
 
       {/* Expandable Stack Trace & Telemetry Modal */}
       {selectedLog && (
-        <Dialog open={Boolean(selectedLog)} onOpenChange={() => setSelectedLog(null)}>
+        <>
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-[#121624] border border-white/15 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
               {/* Modal Header */}
@@ -524,7 +523,7 @@ export const CrashLogsView: React.FC = () => {
               </div>
             </div>
           </div>
-        </Dialog>
+        </>
       )}
     </div>
   );

@@ -160,22 +160,13 @@ export const UsersView: React.FC = () => {
     try {
       const expiresAt = days ? new Date(Date.now() + days * 86400000).toISOString() : null;
       
-      let updatePayload: any = {
-        is_pro: true,
-        pro_expires_at: expiresAt,
-        updated_at: new Date().toISOString()
-      };
-
-      let { error } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', selectedUser.id);
-
-      if (error && error.message?.includes('pro_expires_at')) {
-        delete updatePayload.pro_expires_at;
-        const fb = await supabase.from('profiles').update(updatePayload).eq('id', selectedUser.id);
-        error = fb.error;
-      }
+      // Goes through the admin_set_pro RPC (is_admin() checked server-side);
+      // a direct profile update is blocked by the anti-cheat trigger.
+      const { error } = await supabase.rpc('admin_set_pro', {
+        p_user_id: selectedUser.id,
+        p_is_pro: true,
+        p_expires_at: expiresAt,
+      });
 
       if (error) throw error;
 
@@ -204,22 +195,11 @@ export const UsersView: React.FC = () => {
     setActionSuccessMsg(null);
 
     try {
-      let updatePayload: any = {
-        is_pro: false,
-        pro_expires_at: null,
-        updated_at: new Date().toISOString()
-      };
-
-      let { error } = await supabase
-        .from('profiles')
-        .update(updatePayload)
-        .eq('id', selectedUser.id);
-
-      if (error && error.message?.includes('pro_expires_at')) {
-        delete updatePayload.pro_expires_at;
-        const fb = await supabase.from('profiles').update(updatePayload).eq('id', selectedUser.id);
-        error = fb.error;
-      }
+      const { error } = await supabase.rpc('admin_set_pro', {
+        p_user_id: selectedUser.id,
+        p_is_pro: false,
+        p_expires_at: null,
+      });
 
       if (error) throw error;
 
@@ -248,14 +228,12 @@ export const UsersView: React.FC = () => {
     setActionSuccessMsg(null);
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          card_count: cardCountInput,
-          last_card_update: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', selectedUser.id);
+      // admin_set_cards RPC (is_admin() checked server-side); a direct profile
+      // update is blocked by the anti-cheat trigger.
+      const { error } = await supabase.rpc('admin_set_cards', {
+        p_user_id: selectedUser.id,
+        p_count: cardCountInput,
+      });
 
       if (error) throw error;
 

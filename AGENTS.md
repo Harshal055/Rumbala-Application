@@ -51,6 +51,30 @@ Rumbala is a couples' dares/games mobile app.
 - Out-of-dares fallback: when a free user runs out of cards, the "Out of Dares" prompt in `app/(tabs)/index.tsx` offers **"✨ Generate with AI"** — free and unlimited (product decision), handled by `handleAiDare`, saved to `ai_dares`.
 - **Never** hardcode the Groq key in the client or commit it.
 
+## Persistence fixes (2026-08-24)
+- **Streak** now persists to `profiles.streak_count` / `last_active` (migration `20260824000000`). Written in `updateStreak` (store) and restored in `syncWithSupabase` when the server value is higher. Previously device-only.
+- **Favorites** now real: `favorite_dares` table (own-row RLS) + `saveFavoriteDare` / `getFavoriteDares` / `removeFavoriteDare` in api.ts. `handleSaveFavorite` in `app/ai-generator.tsx` actually inserts now (was a no-op alert). A "My Favorites" list screen is still TODO.
+
+## Privileged-write architecture (2026-08-24) — IMPORTANT
+The anti-cheat trigger `restrict_sensitive_profile_updates` now keys off `current_user` (reliable): direct writes by role `authenticated` to `card_count` / `is_pro` / `pro_expires_at` / `last_card_update` / `last_weekly_claim_at` are **always blocked**; `SECURITY DEFINER` RPCs (run as owner) and the webhook (`service_role`) are allowed. So **every** change to those columns MUST go through an RPC — never a direct client `.update()`:
+- Spend a card → `spend_card(p_user_id)` (client: `spendCard`, used in store `drawCard`).
+- Redeem promo → `redeem_promo_code(p_code)` (client: `redeemPromoCode`). Server-side, atomic, one-per-user via `promo_redemptions`. `promo_codes` is now admin-read-only.
+- Admin set cards → `admin_set_cards(p_user_id, p_count)` (client: `adminUpdateUserCards` + admin-web).
+- Admin set Pro → `admin_set_pro(p_user_id, p_is_pro, p_expires_at)` (client: `adminGrantPro` + admin-web).
+- Purchases/weekly → `add_purchased_cards` / `claim_weekly_cards` (already RPCs).
+Migration: `20260824010000_privileged_write_rpcs.sql`. This closed the self-grant hole AND fixed card-spend/promo/admin silently failing (see `security/LOGIC_FLOW_REVIEW_2026-08-24.md`, CRITICAL — now resolved).
+
+## Card/Pro grant split (2026-08-24)
+To avoid double-granting: **cards** are granted client-side (`add_purchased_cards` after purchase), **Pro** is granted by the `revenuecat-webhook`. The webhook no longer grants cards. Don't add a second card-grant path without idempotency. (To make card grants receipt-verified instead, move granting into the webhook and `REVOKE EXECUTE` on `add_purchased_cards` from `authenticated`.)
+
+## Agora video tokens (2026-08-24)
+Video calls no longer join with an empty token. `supabase/functions/agora-token/index.ts` issues a short-lived RTC token only to a verified room member (App Certificate stays a secret). `app/(tabs)/ldr.tsx` fetches it before `joinChannel`, falling back to `''` until the certificate is enabled. Setup: enable the App Certificate in Agora, `supabase secrets set AGORA_APP_ID` + `AGORA_APP_CERTIFICATE`, deploy the function (keep `verify_jwt` on). Uses `agora-token` via esm.sh.
+
+## Bug fixes (2026-08-24)
+- Fixed `20260321123000_seed_cards.sql`: it had 5 backslash-escaped apostrophes (`\'`) and a premature `;` (line 136) that closed the INSERT early, orphaning all LDR seed rows — the migration would fail on a fresh `db reset`/new environment (Postgres default `standard_conforming_strings=on`). Now a single valid INSERT; all 32 migrations parse cleanly. Also removed a stray literal `\n` in one card's text.
+
+- Fixed the 6 pre-existing admin-web TS errors: added `admin-web/src/vite-env.d.ts` (`vite/client` types for `import.meta.env`); replaced the mismatched `Dialog` wrapper in `CrashLogsView.tsx` with a fragment (the modal has its own chrome + close button) and removed the now-unused import; dropped the redundant trailing `?? 0` (3×) in `RevenueView.tsx`. Both `tsc` projects now report 0 errors.
+
 ## Known open items (see the security review)
 - Promo codes are readable by all authenticated users and redeemed client-side — move to an admin-only read policy + a `SECURITY DEFINER` `redeem_promo_code` RPC with per-user idempotency.
 - Agora video joins with an empty token — add an App Certificate + token server.

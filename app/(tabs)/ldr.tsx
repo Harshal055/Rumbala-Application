@@ -653,8 +653,24 @@ export default function LdrScreen() {
             
             const channelId = roomCode;
             console.log(`--- AGORA: JOINING CHANNEL: "${channelId}" as UID: ${numericUid}`);
-            
-            engine.current.joinChannel('', channelId, numericUid, {
+
+            // Fetch a short-lived RTC token from the agora-token Edge Function so
+            // only verified room members can join. Falls back to '' (App-ID-only
+            // join) when the function/App Certificate isn't set up yet, preserving
+            // current behaviour until you enable the certificate.
+            let rtcToken = '';
+            try {
+                const { supabase } = await import('../../src/services/supabase');
+                const { data, error } = await supabase.functions.invoke('agora-token', {
+                    body: { channelName: channelId, uid: numericUid },
+                });
+                if (!error && data?.token) rtcToken = data.token as string;
+                else if (__DEV__) console.warn('--- AGORA: token fetch failed, joining without token', error);
+            } catch (tokErr) {
+                if (__DEV__) console.warn('--- AGORA: token fetch error', tokErr);
+            }
+
+            engine.current.joinChannel(rtcToken, channelId, numericUid, {
                 channelProfile: AgoraModule.ChannelProfileType.ChannelProfileCommunication,
                 clientRoleType: AgoraModule.ClientRoleType.ClientRoleBroadcaster,
                 publishMicrophoneTrack: !isMutedRef.current,

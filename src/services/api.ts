@@ -210,7 +210,7 @@ export const ensureProfileExists = async (userId: string, email?: string) => {
 
 export const updateProfile = async (
     userId: string,
-    updates: { partner1?: string; partner2?: string; partner_email?: string; card_count?: number; vibe?: string },
+    updates: { partner1?: string; partner2?: string; partner_email?: string; card_count?: number; vibe?: string; streak_count?: number; last_active?: string | null },
 ) => {
     const { data, error } = await supabase
         .from('profiles')
@@ -263,6 +263,15 @@ export const syncCardCount = async (userId: string, count: number) => {
         .update({ card_count: count })
         .eq('id', userId);
     if (error) throw new Error(error.message);
+};
+
+// Spend one card server-side (SECURITY DEFINER RPC). Direct client writes to
+// card_count are blocked by the anti-cheat trigger, so this is the only path
+// that actually persists a spend. Returns the new balance.
+export const spendCard = async (userId: string): Promise<number> => {
+    const { data, error } = await supabase.rpc('spend_card', { p_user_id: userId });
+    if (error) throw new Error(error.message);
+    return typeof data === 'number' ? data : Number(data);
 };
 
 // ─── CARDS ────────────────────────────────────────────────────────────────────
@@ -721,10 +730,9 @@ export const adminSearchUsers = async (query: string) => {
 };
 
 export const adminUpdateUserCards = async (userId: string, count: number) => {
-    const { error } = await supabase
-        .from('profiles')
-        .update({ card_count: count, last_card_update: new Date().toISOString() })
-        .eq('id', userId);
+    // Goes through the admin RPC (is_admin() checked server-side); a direct
+    // update would be blocked by the profile anti-cheat trigger.
+    const { error } = await supabase.rpc('admin_set_cards', { p_user_id: userId, p_count: count });
     if (error) throw new Error(error.message);
 };
 
@@ -799,139 +807,36 @@ export const redeemPromoCode = async (userId: string, rawCode: string): Promise<
     const code = (rawCode || '').trim().toUpperCase();
     if (!code) throw new Error('Please enter a valid promo code.');
 
-    // 1. Fetch promo code from DB
-    const { data: promo, error } = await supabase
-        .from('promo_codes')
-        .select('*')
-        .ilike('code', code)
-        .single();
+    // Redemption is fully server-side (SECURITY DEFINER redeem_promo_code RPC):
+    // validates the code, enforces one-per-user via promo_redemptions, grants Pro
+    // and/or cards atomically, and bumps used_count. Promo codes are no longer
+    // client-readable, and the profile writes are done inside the RPC (the
+    // anti-cheat trigger blocks direct client writes to is_pro / card_count).
+    const { data, error } = await supabase.rpc('redeem_promo_code', { p_code: code });
+    if (error) throw new Error(error.message);
 
-    if (error || !promo) {
-        return { success: false, message: 'Invalid promo code. Please check and try again.' };
-    }
-
-    if (!promo.is_active) {
-        return { success: false, message: 'This promo code is no longer active.' };
-    }
-
-    if (promo.expires_at && new Date(promo.expires_at).getTime() < Date.now()) {
-        return { success: false, message: 'This promo code has expired.' };
-    }
-
-    if (promo.max_uses && promo.used_count >= promo.max_uses) {
-        return { success: false, message: 'This promo code has reached its maximum redemptions limit.' };
-    }
-
-    // 2. Fetch user profile
-    const { data: profile, error: pErr } = await supabase
-        .from('profiles')
-        .select('id, is_pro, pro_expires_at, card_count')
-        .eq('id', userId)
-        .single();
-
-    if (pErr || !profile) {
-        throw new Error('User profile not found. Please try again.');
-    }
-
-    const grantProDays = promo.grant_pro_days || 0;
-    const bonusCards = promo.bonus_cards || 0;
-    let newExpiry: string | null = profile.pro_expires_at || null;
-    let isLifetime = false;
-
-    const profileUpdates: any = {
-        updated_at: new Date().toISOString(),
-    };
-
-    if (grantProDays > 0) {
-        if (grantProDays >= 9999) {
-            // Lifetime
-            isLifetime = true;
-            newExpiry = null;
-            profileUpdates.is_pro = true;
-            profileUpdates.pro_expires_at = null;
-        } else if (profile.is_pro && !profile.pro_expires_at) {
-            // User already has Lifetime Pro — don't downgrade to timed access
-            // Just skip the Pro grant, but still award bonus cards below
-        } else {
-            // Extend or set
-            let baseTime = Date.now();
-            if (profile.is_pro && profile.pro_expires_at) {
-                const currentExp = new Date(profile.pro_expires_at).getTime();
-                if (currentExp > baseTime) {
-                    baseTime = currentExp;
-                }
-            }
-            const expDate = new Date(baseTime + grantProDays * 24 * 60 * 60 * 1000);
-            newExpiry = expDate.toISOString();
-            profileUpdates.is_pro = true;
-            profileUpdates.pro_expires_at = newExpiry;
-        }
-    }
-
-    let nextCardCount = profile.card_count ?? 0;
-    if (bonusCards > 0) {
-        nextCardCount += bonusCards;
-        profileUpdates.card_count = nextCardCount;
-    }
-
-    // Update profile
-    const { error: uErr } = await supabase
-        .from('profiles')
-        .update(profileUpdates)
-        .eq('id', userId);
-
-    if (uErr) throw new Error(uErr.message);
-
-    // Increment promo code used_count
-    await supabase
-        .from('promo_codes')
-        .update({ used_count: (promo.used_count || 0) + 1 })
-        .eq('code', promo.code);
-
-    let successMsg = '🎉 Promo code applied successfully!';
-    if (isLifetime) {
-        successMsg = '👑 Congratulations! You received Lifetime Rumbala Pro with Unlimited Cards!';
-    } else if (grantProDays > 0 && bonusCards > 0) {
-        successMsg = `🎉 You unlocked ${grantProDays} Days of Rumbala Pro (Unlimited Cards) + ${bonusCards} Bonus Cards!`;
-    } else if (grantProDays > 0) {
-        successMsg = `🎉 You unlocked ${grantProDays} Days of Rumbala Pro with Unlimited Cards!`;
-    } else if (bonusCards > 0) {
-        successMsg = `🎁 You received ${bonusCards} Bonus Dare Cards!`;
-    }
-
+    const r: any = data || {};
     return {
-        success: true,
-        message: successMsg,
-        grantProDays,
-        bonusCards,
-        expiresAt: newExpiry,
-        isLifetime,
-        newCardCount: nextCardCount,
+        success: Boolean(r.success),
+        message: r.message || (r.success ? 'Promo code applied!' : 'Unable to redeem this code.'),
+        grantProDays: r.grantProDays ?? 0,
+        bonusCards: r.bonusCards ?? 0,
+        expiresAt: r.expiresAt ?? null,
+        isLifetime: Boolean(r.isLifetime),
+        newCardCount: r.newCardCount,
     };
 };
 
 export const adminGrantPro = async (userId: string, isPro: boolean, expiresAt?: string | null) => {
-    const payload: { is_pro: boolean; pro_expires_at?: string | null; updated_at: string } = {
-        is_pro: isPro,
-        pro_expires_at: isPro ? (expiresAt !== undefined ? expiresAt : null) : null,
-        updated_at: new Date().toISOString(),
-    };
+    const proExpiresAt = isPro ? (expiresAt !== undefined ? expiresAt : null) : null;
 
-    // First attempt update with pro_expires_at
-    let { error } = await supabase
-        .from('profiles')
-        .update(payload)
-        .eq('id', userId);
-
-    // Fallback if pro_expires_at column hasn't been migrated yet
-    if (error && error.message.includes('pro_expires_at')) {
-        const fallback = await supabase
-            .from('profiles')
-            .update({ is_pro: isPro, updated_at: new Date().toISOString() })
-            .eq('id', userId);
-        error = fallback.error;
-    }
-
+    // Goes through the admin RPC (is_admin() checked server-side); a direct
+    // profile update would be blocked by the anti-cheat trigger.
+    const { error } = await supabase.rpc('admin_set_pro', {
+        p_user_id: userId,
+        p_is_pro: isPro,
+        p_expires_at: proExpiresAt,
+    });
     if (error) throw new Error(error.message);
 
     // Broadcast live event to the user's active device immediately
@@ -942,7 +847,7 @@ export const adminGrantPro = async (userId: string, isPro: boolean, expiresAt?: 
             event: 'user_updated',
             payload: {
                 is_pro: isPro,
-                pro_expires_at: payload.pro_expires_at,
+                pro_expires_at: proExpiresAt,
             },
         });
         supabase.removeChannel(channel);
@@ -1239,6 +1144,49 @@ export const rateAiDare = async (dareId: string, rating: -1 | 0 | 1) => {
         .from('ai_dares')
         .update({ rating })
         .eq('id', dareId);
+    if (error) throw new Error(error.message);
+    return { success: true };
+};
+
+// ─── FAVORITE DARES ───────────────────────────────────────────────────────────
+
+export const saveFavoriteDare = async (
+    userId: string,
+    dare: { text: string; type?: string; vibe?: string; intensity?: number; source?: string },
+) => {
+    if (!userId) throw new Error('You must be logged in to save a favorite.');
+    if (!dare?.text) throw new Error('Nothing to save.');
+    const { data, error } = await supabase
+        .from('favorite_dares')
+        .insert({
+            user_id: userId,
+            text: dare.text,
+            type: dare.type ?? null,
+            vibe: dare.vibe ?? null,
+            intensity: dare.intensity ?? null,
+            source: dare.source ?? 'ai',
+        })
+        .select()
+        .single();
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const getFavoriteDares = async (userId: string, limit = 100) => {
+    if (!userId) throw new Error('User ID is required for getFavoriteDares');
+    const { data, error } = await supabase
+        .from('favorite_dares')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+    if (error) throw new Error(error.message);
+    return data;
+};
+
+export const removeFavoriteDare = async (favoriteId: string) => {
+    if (!favoriteId) throw new Error('favoriteId is required');
+    const { error } = await supabase.from('favorite_dares').delete().eq('id', favoriteId);
     if (error) throw new Error(error.message);
     return { success: true };
 };

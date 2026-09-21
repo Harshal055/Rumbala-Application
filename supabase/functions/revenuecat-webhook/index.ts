@@ -44,37 +44,15 @@ serve(async (req) => {
         
         console.log(`Processing ${eventType} for user ${userId} and product ${productId}`);
 
-        // Handle Consumables (Dare Cards)
-        // Consumables are triggered as NON_RENEWING_PURCHASE.
-        if (eventType === 'NON_RENEWING_PURCHASE') {
-            let cardCountToAdd = 0;
-            const pId = productId.toLowerCase();
-            
-            // Extract pack sizes based on product IDs
-            if (pId.includes('50_cards')) cardCountToAdd = 50;
-            else if (pId.includes('150_cards')) cardCountToAdd = 150;
-            else if (pId.includes('300_cards')) cardCountToAdd = 300;
-            else if (pId.includes('600_cards')) cardCountToAdd = 600;
-            else if (pId.includes('consumable')) cardCountToAdd = 50; // Fallback
-            else if (pId.includes('pack')) cardCountToAdd = 50; // Fallback
-            
-            // Note: Lifetime subscriptions are also NON_RENEWING_PURCHASE but won't match the card strings above.
-            if (cardCountToAdd > 0) {
-                console.log(`Adding ${cardCountToAdd} cards to user ${userId}`);
-                // Use a secure RPC designed for service roles to atomically increment
-                const { error } = await supabase.rpc('secure_increment_cards_service_role', {
-                    p_user_id: userId,
-                    p_amount: cardCountToAdd
-                });
-                
-                if (error) {
-                    console.error('Error adding cards:', error);
-                    return new Response("Error updating database", { status: 500 });
-                }
-                
-                return new Response("Cards added successfully", { status: 200 });
-            }
-        }
+        // Consumable dare-card packs (NON_RENEWING_PURCHASE) are granted CLIENT-SIDE
+        // via the add_purchased_cards RPC right after purchase. To avoid double-
+        // granting, the webhook intentionally does NOT add cards here. It only
+        // handles subscriptions / Pro below. (Lifetime Pro also arrives as
+        // NON_RENEWING_PURCHASE and is handled by the entitlement check below.)
+        //
+        // If you later switch to webhook-only card grants (receipt-verified), move
+        // the card-granting here and REVOKE EXECUTE on add_purchased_cards from
+        // `authenticated` so the client can no longer self-grant.
 
         // Handle Subscriptions (Pro)
         const entitlementIds = event.entitlement_ids || [];

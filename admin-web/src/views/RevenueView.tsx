@@ -47,13 +47,13 @@ export const RevenueView: React.FC = () => {
   }, []);
 
   const totalRevenue = purchases.reduce((sum, item) => {
-    const amt = Number(item.amount ?? (item.amount_paise ? item.amount_paise / 100 : 0) ?? 0);
+    const amt = Number(item.amount ?? (item.amount_paise ? item.amount_paise / 100 : 0));
     return sum + amt;
   }, 0);
 
   const skuBreakdown = purchases.reduce((acc: Record<string, { count: number; revenue: number }>, p) => {
     const sku = p.sku || 'Unknown SKU';
-    const amt = Number(p.amount ?? (p.amount_paise ? p.amount_paise / 100 : 0) ?? 0);
+    const amt = Number(p.amount ?? (p.amount_paise ? p.amount_paise / 100 : 0));
     if (!acc[sku]) acc[sku] = { count: 0, revenue: 0 };
     acc[sku].count += 1;
     acc[sku].revenue += amt;
@@ -192,7 +192,7 @@ export const RevenueView: React.FC = () => {
                   </tr>
                 ) : (
                   purchases.slice(0, 50).map((p, idx) => {
-                    const amt = Number(p.amount ?? (p.amount_paise ? p.amount_paise / 100 : 0) ?? 0);
+                    const amt = Number(p.amount ?? (p.amount_paise ? p.amount_paise / 100 : 0));
                     return (
                       <tr key={p.id || idx} className="hover:bg-white/[0.02] transition-colors">
                         <td className="p-4">

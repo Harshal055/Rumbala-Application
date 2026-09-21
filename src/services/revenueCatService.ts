@@ -150,10 +150,19 @@ export function getCardsForProduct(productId: string): number {
     if (!productId) return 0;
     const lower = productId.toLowerCase();
     if (PRODUCT_CARD_MAP[lower] !== undefined) return PRODUCT_CARD_MAP[lower];
+    
+    // New Webhook Tiers
+    if (lower.includes('600_cards') || lower.includes('600_pack') || lower.includes('card_600')) return 600;
+    if (lower.includes('300_cards') || lower.includes('300_pack') || lower.includes('card_300')) return 300;
+    if (lower.includes('150_cards') || lower.includes('150_pack') || lower.includes('card_150')) return 150;
+    if (lower.includes('50_cards') || lower.includes('50_pack') || lower.includes('card_50')) return 50;
+    
+    // Legacy Tiers
     if (lower.includes('card_25') || lower.includes('25_pack') || lower.includes('25pack') || lower.includes('25_cards') || lower.includes('25pack')) return 25;
     if (lower.includes('card_10') || lower.includes('10_pack') || lower.includes('10pack') || lower.includes('10_cards') || lower.includes('10pack')) return 10;
     if (lower.includes('card_5') || lower.includes('5_pack') || lower.includes('5pack') || lower.includes('5_cards') || lower.includes('consumable') || lower === 'custom') return 5;
     if (lower.includes('card_1') || lower.includes('1_pack') || lower.includes('1pack') || lower.includes('single')) return 1;
+    
     return 0;
 }
 

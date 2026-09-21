@@ -14,7 +14,7 @@ import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
 import { useStore } from '../src/store/useStore';
 import { MOOD_PRESETS, generateAIDare, MoodPreset } from '../src/services/aiDareService';
-import { rateAiDare } from '../src/services/api';
+import { rateAiDare, saveFavoriteDare } from '../src/services/api';
 import { DareCard } from '../src/constants/cards';
 
 const BG_COLORS = ['#FFF5F5', '#FFF0F5', '#F5F3FF', '#FFF8F0'];
@@ -83,11 +83,29 @@ export default function AIDareGeneratorScreen() {
         router.push('/(tabs)');
     };
 
-    const handleSaveFavorite = () => {
+    const handleSaveFavorite = async () => {
         if (!generatedDare || savedToFavs) return;
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        const userId = useStore.getState().userId;
+        if (!userId) {
+            showAlert('Sign in required', 'Please log in to save favorite dares.');
+            return;
+        }
+        // Optimistic; revert if the save fails.
         setSavedToFavs(true);
-        showAlert('Saved to Favorites! ❤️', 'You can find this custom dare anytime in your deck collection.');
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        try {
+            await saveFavoriteDare(userId, {
+                text: generatedDare.text,
+                type: generatedDare.type,
+                vibe: generatedDare.vibe,
+                intensity: generatedDare.intensity,
+                source: generatedDare.remoteId ? 'ai' : 'local',
+            });
+            showAlert('Saved to Favorites! ❤️', 'Find it anytime in your favorites collection.');
+        } catch (e) {
+            setSavedToFavs(false);
+            showAlert('Could not save', 'Please try again in a moment.');
+        }
     };
 
     return (
