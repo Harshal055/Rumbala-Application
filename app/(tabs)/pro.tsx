@@ -179,6 +179,16 @@ export default function CoupleProfileScreen() {
                         <TouchableOpacity 
                             onPress={() => {
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                router.push('/favorites');
+                            }} 
+                            style={styles.headerBtn}
+                            activeOpacity={0.8}
+                        >
+                            <Ionicons name="heart" size={22} color="#FF6B35" />
+                        </TouchableOpacity>
+                        <TouchableOpacity 
+                            onPress={() => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 router.push('/(tabs)/shop');
                             }} 
                             style={styles.headerBtn}
@@ -324,6 +334,32 @@ export default function CoupleProfileScreen() {
                             ))}
                         </View>
                     </View>
+
+                    {/* ── Saved Dares Quick Banner ── */}
+                    <TouchableOpacity
+                        style={[styles.favBanner, glassStyles.container]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/favorites');
+                        }}
+                        activeOpacity={0.85}
+                    >
+                        <LinearGradient
+                            colors={['rgba(255, 107, 53, 0.12)', 'rgba(236, 72, 153, 0.08)']}
+                            style={styles.favBannerGradient}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 0 }}
+                        >
+                            <View style={styles.favBannerIcon}>
+                                <Ionicons name="heart" size={20} color="#FF6B35" />
+                            </View>
+                            <View style={styles.favBannerContent}>
+                                <Text style={styles.favBannerTitle}>Saved Dares ❤️</Text>
+                                <Text style={styles.favBannerSub}>Browse and replay your favorite couple dares</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color="#FF6B35" />
+                        </LinearGradient>
+                    </TouchableOpacity>
 
                     {/* ── Memories Section ── */}
                     <View style={styles.memoriesHeader}>
@@ -510,6 +546,45 @@ const styles = StyleSheet.create({
     detailChipTextWrap: { flex: 1, minWidth: 0 },
     detailChipLabel: { fontSize: 11, color: '#888', fontWeight: '700', letterSpacing: 0.4 },
     detailChipValue: { fontSize: 13, color: '#1a1a1a', fontWeight: '800', marginTop: 2 },
+
+    // ── Saved Dares Banner ──
+    favBanner: {
+        marginHorizontal: 20,
+        marginBottom: 24,
+        borderRadius: 20,
+        overflow: 'hidden',
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 107, 53, 0.2)',
+    },
+    favBannerGradient: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 16,
+        gap: 12,
+    },
+    favBannerIcon: {
+        width: 42,
+        height: 42,
+        borderRadius: 21,
+        backgroundColor: 'rgba(255, 107, 53, 0.15)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    favBannerContent: {
+        flex: 1,
+    },
+    favBannerTitle: {
+        fontSize: 15,
+        fontWeight: '800',
+        color: '#1A1A2E',
+    },
+    favBannerSub: {
+        fontSize: 11.5,
+        color: '#6B7280',
+        fontWeight: '500',
+        marginTop: 2,
+    },
 
     // ── Memories ──
     memoriesHeader: {

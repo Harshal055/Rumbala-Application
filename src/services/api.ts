@@ -27,9 +27,44 @@ export const getAccessToken = () => null;
 export const getRefreshToken = () => null;
 export const clearTokens = () => {};
 
+/**
+ * Normalizes and formats technical or raw Supabase errors into human-friendly messages.
+ */
+export const formatAuthError = (error: any, fallbackMessage: string = 'An error occurred'): string => {
+    if (!error) return fallbackMessage;
+    const raw = (typeof error === 'string' ? error : error.message || '').trim();
+    if (!raw) return fallbackMessage;
+
+    if (/network request failed/i.test(raw) || /failed to fetch/i.test(raw) || /networkerror/i.test(raw)) {
+        return 'Unable to reach the server. Please check your internet connection.';
+    }
+    if (/email rate limit/i.test(raw) || /rate limit/i.test(raw) || /too many requests/i.test(raw) || /security purposes/i.test(raw)) {
+        return 'Too many attempts. Please wait a moment before trying again.';
+    }
+    if (/user already registered/i.test(raw) || /already exists/i.test(raw)) {
+        return 'An account with this email already exists. Please log in instead.';
+    }
+    if (/password should be at least/i.test(raw) || /password.*short/i.test(raw)) {
+        return 'Password must be at least 6 characters.';
+    }
+    if (/email not confirmed/i.test(raw)) {
+        return 'Your email has not been verified yet. Please check your inbox for the verification code.';
+    }
+    if (/invalid login credentials/i.test(raw) || /invalid_credentials/i.test(raw)) {
+        return 'Incorrect email or password. Please try again.';
+    }
+    if (/token has expired/i.test(raw) || /otp.*expired/i.test(raw) || /invalid.*token/i.test(raw) || /invalid.*otp/i.test(raw) || /email link is invalid/i.test(raw)) {
+        return 'The verification code is invalid or has expired. Please request a new code.';
+    }
+    if (/signup is disabled/i.test(raw)) {
+        return 'Email signup is currently disabled.';
+    }
+    return raw;
+};
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 
-export const signupV2 = async (email: string, password: string) => {
+export const signupV2 = async (email: string, password: string, fullName?: string) => {
     const normalizedEmail = normalizeEmail(email);
     if (!isValidEmail(normalizedEmail)) {
         throw new Error('Please enter a valid email address.');
@@ -38,18 +73,19 @@ export const signupV2 = async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
+        options: {
+            data: fullName?.trim() ? { name: fullName.trim(), full_name: fullName.trim() } : undefined,
+        },
     });
     if (error) {
-        const raw = error.message || 'Signup failed';
-        if (/email rate limit exceeded/i.test(raw)) {
-            throw new Error('Too many signup attempts. Please wait a few minutes and try again.');
-        }
-        if (/signup is disabled/i.test(raw)) {
-            throw new Error('Email signup is disabled in Supabase Auth settings.');
-        }
-        throw new Error(raw);
+        throw new Error(formatAuthError(error, 'Signup failed. Please try again.'));
     }
     if (!data.user) throw new Error('Registration could not be completed. Please try again.');
+
+    // If email confirmations are enabled and email is already registered, Supabase returns identities: []
+    if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new Error('An account with this email already exists. Please log in instead.');
+    }
 
     if (data.session) {
         await postAuthSync(data.user.id, data.user.email || undefined);
@@ -85,17 +121,7 @@ export const loginV2 = async (email: string, password: string) => {
         password,
     });
     if (error) {
-        const raw = error.message || 'Login failed';
-        if (/email rate limit exceeded/i.test(raw)) {
-            throw new Error('Too many auth requests. Please wait a few minutes and try again.');
-        }
-        if (/email not confirmed/i.test(raw)) {
-            throw new Error('Please verify your email first, then try logging in.');
-        }
-        if (/invalid login credentials/i.test(raw)) {
-            throw new Error('Invalid email or password.');
-        }
-        throw new Error(raw);
+        throw new Error(formatAuthError(error, 'Login failed. Please check your credentials.'));
     }
 
     if (!data?.user || !data?.session) {
@@ -173,9 +199,164 @@ export const resetPasswordV2 = async (email: string) => {
 
     const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail);
     if (error) {
-        throw new Error(error.message || 'Failed to send password reset email.');
+        throw new Error(formatAuthError(error, 'Failed to send password reset email.'));
     }
 };
+
+/**
+ * Verifies the recovery OTP and updates the user's password.
+ */
+export const verifyPasswordResetOtp = async (email: string, token: string, newPassword: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+    const cleanToken = token.trim();
+    if (!cleanToken || cleanToken.length < 6 || cleanToken.length > 8) {
+        throw new Error('Please enter the verification code.');
+    }
+    if (!newPassword || newPassword.length < 6) {
+        throw new Error('Password must be at least 6 characters.');
+    }
+
+    // 1. Verify recovery OTP
+    const { error: verifyError } = await supabase.auth.verifyOtp({
+        email: normalizedEmail,
+        token: cleanToken,
+        type: 'recovery',
+    });
+    if (verifyError) {
+        throw new Error(formatAuthError(verifyError, 'Invalid or expired OTP code.'));
+    }
+
+    // 2. Set the new password for the authenticated recovery session
+    const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+    });
+    if (updateError) {
+        throw new Error(formatAuthError(updateError, 'Failed to update password. Please try again.'));
+    }
+
+    // 3. Clear the temporary recovery session so the user logs in with new credentials
+    await supabase.auth.signOut().catch(() => {});
+    return true;
+};
+
+/**
+ * Sends a one-time passcode (OTP) for passwordless login.
+ */
+export const sendLoginOtp = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+        email: normalizedEmail,
+        options: {
+            shouldCreateUser: true,
+        },
+    });
+    if (error) {
+        throw new Error(formatAuthError(error, 'Failed to send login code.'));
+    }
+};
+
+/**
+ * Verifies a login OTP code.
+ */
+export const verifyLoginOtp = async (email: string, token: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+    const cleanToken = token.trim();
+    if (!cleanToken || cleanToken.length < 6) {
+        throw new Error('Please enter the verification code.');
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+        email: normalizedEmail,
+        token: cleanToken,
+        type: 'email',
+    });
+    if (error) {
+        throw new Error(formatAuthError(error, 'Invalid or expired code.'));
+    }
+    if (!data.user) {
+        throw new Error('Authentication failed.');
+    }
+
+    await setTokens(data.session?.access_token || '', data.session?.refresh_token || '');
+    await postAuthSync(data.user.id, data.user.email);
+    return { user: data.user, access_token: data.session?.access_token };
+};
+
+/**
+ * Verifies the confirmation OTP sent to a newly registered email (6 or 8 digits).
+ */
+export const verifySignupOtp = async (email: string, token: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+    const cleanToken = token.trim();
+    if (!cleanToken || cleanToken.length < 6 || cleanToken.length > 8) {
+        throw new Error('Please enter a valid verification code.');
+    }
+
+    const { data, error } = await supabase.auth.verifyOtp({
+        email: normalizedEmail,
+        token: cleanToken,
+        type: 'signup',
+    });
+
+    if (error) {
+        // Fallback check with 'email' type if project configured differently
+        const fallback = await supabase.auth.verifyOtp({
+            email: normalizedEmail,
+            token: cleanToken,
+            type: 'email',
+        });
+        if (fallback.error) {
+            throw new Error(formatAuthError(fallback.error || error, 'Invalid or expired verification code.'));
+        }
+        if (!fallback.data.user || !fallback.data.session) {
+            throw new Error('Verification completed but could not establish session. Please log in.');
+        }
+        await setTokens(fallback.data.session.access_token, fallback.data.session.refresh_token);
+        await postAuthSync(fallback.data.user.id, fallback.data.user.email || undefined);
+        return { user: fallback.data.user, session: fallback.data.session };
+    }
+
+    if (!data.user || !data.session) {
+        throw new Error('Verification completed but could not establish session. Please log in.');
+    }
+
+    await setTokens(data.session.access_token, data.session.refresh_token);
+    await postAuthSync(data.user.id, data.user.email || undefined);
+    return { user: data.user, session: data.session };
+};
+
+/**
+ * Resends the confirmation OTP for a newly registered email.
+ */
+export const resendSignupOtp = async (email: string) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!isValidEmail(normalizedEmail)) {
+        throw new Error('Please enter a valid email address.');
+    }
+
+    const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: normalizedEmail,
+    });
+    if (error) {
+        throw new Error(formatAuthError(error, 'Failed to resend confirmation code.'));
+    }
+};
+
+
 
 // ─── PROFILE ──────────────────────────────────────────────────────────────────
 

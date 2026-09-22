@@ -16,8 +16,10 @@ import {
   Heart,
   UserX,
   Clock,
-  Edit3
+  Edit3,
+  Download
 } from 'lucide-react';
+import { exportToCsv } from '../lib/csvExport';
 
 interface UserProfile {
   id: string;
@@ -274,9 +276,37 @@ export const UsersView: React.FC = () => {
           </p>
         </div>
 
-        <Button variant="outline" size="sm" onClick={loadUsers} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh List
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              exportToCsv(
+                'rumbala_users',
+                filteredUsers.map((u) => ({
+                  id: u.id,
+                  email: u.email || '',
+                  display_name: u.display_name || '',
+                  partner1: u.partner1 || '',
+                  partner2: u.partner2 || '',
+                  card_count: u.card_count ?? 0,
+                  is_pro: u.is_pro ? 'PRO' : 'FREE',
+                  pro_expires_at: u.pro_expires_at || '',
+                  streak_count: u.streak_count ?? 0,
+                  gender: u.gender || '',
+                  relationship_status: u.relationship_status || '',
+                  app_purpose: u.app_purpose || '',
+                  created_at: u.created_at || '',
+                }))
+              );
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadUsers} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh List
+          </Button>
+        </div>
       </div>
 
       {/* Search Bar */}

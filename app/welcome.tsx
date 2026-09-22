@@ -28,9 +28,9 @@ const VIBES = [
 
 export default function WelcomeScreen() {
     const router = useRouter();
-    const { setSelectedVibe, setPartners, showAlert } = useStore();
-    const [partner1, setPartner1] = useState('');
-    const [partner2, setPartner2] = useState('');
+    const { setSelectedVibe, setPartners, showAlert, partner1: savedPartner1, partner2: savedPartner2 } = useStore();
+    const [partner1, setPartner1] = useState(savedPartner1 || '');
+    const [partner2, setPartner2] = useState(savedPartner2 || '');
     const [partnerEmail, setPartnerEmail] = useState('');
     const [vibe, setVibe] = useState<'fun' | 'romantic' | 'spicy'>('fun');
     const [name1Focused, setName1Focused] = useState(false);
@@ -50,7 +50,15 @@ export default function WelcomeScreen() {
             setPartners(partner1.trim(), partner2.trim(), partnerEmail.trim());
             await AsyncStorage.setItem('@Rumbala_mode', 'local');
             setSelectedVibe(vibe);
-            router.replace('/');
+
+            const state = useStore.getState();
+            if (!state.isAuthenticated) {
+                router.replace('/signup');
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
+            } else {
+                router.replace('/subscription');
+            }
         } catch {
             showAlert('Error', 'Something went wrong while setting up your profile. Please try again.');
         }

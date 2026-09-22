@@ -1,6 +1,18 @@
 # Dependencies and local caches
 node_modules/
 .expo/
+dist/
+dist-ssr/
+coverage/
+*.tsbuildinfo
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
 
 # Local secrets
 .env

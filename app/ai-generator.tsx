@@ -101,7 +101,10 @@ export default function AIDareGeneratorScreen() {
                 intensity: generatedDare.intensity,
                 source: generatedDare.remoteId ? 'ai' : 'local',
             });
-            showAlert('Saved to Favorites! ❤️', 'Find it anytime in your favorites collection.');
+            showAlert('Saved to Favorites! ❤️', 'Find it anytime in your favorites collection.', [
+                { text: 'Keep Creating', style: 'cancel' },
+                { text: 'View Favorites', onPress: () => router.push('/favorites') }
+            ]);
         } catch (e) {
             setSavedToFavs(false);
             showAlert('Could not save', 'Please try again in a moment.');
@@ -133,7 +136,16 @@ export default function AIDareGeneratorScreen() {
                         <Text style={styles.headerTitle}>AI Dare Studio ✨</Text>
                         <Text style={styles.headerSubtitle}>Tailored dares crafted for {partner1 || 'You'} & {partner2 || 'Partner'}</Text>
                     </View>
-                    <View style={{ width: 40 }} />
+                    <TouchableOpacity
+                        style={[styles.backBtn, glassStyles.container]}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            router.push('/favorites');
+                        }}
+                        activeOpacity={0.8}
+                    >
+                        <Ionicons name="heart" size={20} color="#FF6B35" />
+                    </TouchableOpacity>
                 </Animated.View>
 
                 <KeyboardAvoidingView

@@ -790,13 +790,24 @@ syncWithSupabase: async () => {
                     const exp = profile.pro_expires_at || null;
                     // Unified formula: Lifetime Pro (flag + no expiry) OR valid future expiry date
                     const isRemoteActive = Boolean((profile.is_pro && !exp) || (exp && new Date(exp).getTime() > Date.now()));
-                    // Always apply remote state — the database is the source of truth
-                    set({ isPro: isRemoteActive, proExpiresAt: exp });
-                    await AsyncStorage.setItem('@Rumbala_is_pro', isRemoteActive ? 'true' : 'false');
-                    if (exp) {
-                        await AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+                    if (isRemoteActive) {
+                        set({ isPro: true, proExpiresAt: exp });
+                        await AsyncStorage.setItem('@Rumbala_is_pro', 'true');
+                        if (exp) {
+                            await AsyncStorage.setItem('@Rumbala_pro_expires_at', exp);
+                        } else {
+                            await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+                        }
                     } else {
-                        await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+                        // Remote is false. Only demote if local state does not currently have an unexpired Pro grant
+                        // (protects against RevenueCat webhook propagation delays right after purchase)
+                        const currentExp = get().proExpiresAt;
+                        const hasLocalActivePro = get().isPro && (!currentExp || new Date(currentExp).getTime() > Date.now());
+                        if (!hasLocalActivePro) {
+                            set({ isPro: false, proExpiresAt: null });
+                            await AsyncStorage.setItem('@Rumbala_is_pro', 'false');
+                            await AsyncStorage.removeItem('@Rumbala_pro_expires_at');
+                        }
                     }
                 }
                 if (profile.last_weekly_claim_at) set({ lastFreeClaimDate: profile.last_weekly_claim_at });

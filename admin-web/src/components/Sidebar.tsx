@@ -11,7 +11,8 @@ import {
   MessageSquare,
   Flame, 
   LogOut,
-  Bug
+  Bug,
+  Sparkles
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -29,6 +30,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'revenue', label: 'Revenue & Sales', icon: CreditCard, badge: '₹' },
     { id: 'users', label: 'User Directory', icon: Users },
+    { id: 'ai-dares', label: 'AI Dares Moderation', icon: Sparkles, badge: 'AI' },
     { id: 'ldr', label: 'LDR Live Rooms', icon: Heart, badge: 'Live' },
     { id: 'cards', label: 'Game Cards CMS', icon: Layers },
     { id: 'features', label: 'Feature Switches', icon: Sliders, badge: 'Hot' },

@@ -5,7 +5,7 @@ import {
     TouchableWithoutFeedback, Keyboard
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { useStore } from '../src/store/useStore';
@@ -21,6 +21,7 @@ const BG_COLORS = ['#F5FAF9', '#E0F2F1', '#B2DFDB'];
 
 export default function LoginScreen() {
     const router = useRouter();
+    const params = useLocalSearchParams<{ prefillEmail?: string }>();
     const { login, showAlert } = useStore();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -29,9 +30,14 @@ export default function LoginScreen() {
     const [showPassword, setShowPassword] = useState(false);
 
     React.useEffect(() => {
+        if (params?.prefillEmail) {
+            setEmail(params.prefillEmail);
+        }
+    }, [params?.prefillEmail]);
+
+    React.useEffect(() => {
         const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-        console.log('LoginScreen: Configuring GoogleSignin with webClientId:', webClientId);
-        if (webClientId) {
+        if (webClientId && !webClientId.includes('YOUR_')) {
             GoogleSignin.configure({
                 webClientId: webClientId,
                 iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -44,8 +50,9 @@ export default function LoginScreen() {
     const handleGoogleSignIn = async () => {
         try {
             setGoogleLoading(true);
-            if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
-                throw new Error('Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env');
+            const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+            if (!webClientId || webClientId.includes('YOUR_')) {
+                throw new Error('Google Sign-In is not configured. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env, then rebuild the app.');
             }
             await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
             await GoogleSignin.signOut().catch(() => null);
@@ -128,7 +135,37 @@ export default function LoginScreen() {
                 router.replace('/subscription');
             }
         } catch (error: any) { 
-            showAlert('Login Failed', error.message || 'Check your credentials and try again.'); 
+            const msg = error?.message || 'Check your credentials and try again.';
+            if (/not been verified/i.test(msg) || /email not confirmed/i.test(msg) || /verification code/i.test(msg)) {
+                showAlert(
+                    'Email Not Verified',
+                    'Your email has not been verified yet. Would you like to enter your verification code now?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                            text: 'Verify Now', 
+                            onPress: () => router.push({
+                                pathname: '/signup',
+                                params: { verifyEmail: email.trim().toLowerCase() }
+                            })
+                        }
+                    ]
+                );
+            } else if (/incorrect email or password/i.test(msg) || /invalid.*credentials/i.test(msg)) {
+                showAlert(
+                    'Login Failed',
+                    'Incorrect email or password. Would you like to reset your password?',
+                    [
+                        { text: 'Try Again', style: 'cancel' },
+                        { 
+                            text: 'Reset Password', 
+                            onPress: () => router.push('/forgot-password') 
+                        }
+                    ]
+                );
+            } else {
+                showAlert('Login Failed', msg); 
+            }
         }
         finally { setIsLoading(false); }
     };

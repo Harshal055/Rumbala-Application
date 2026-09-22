@@ -126,6 +126,8 @@ export default function OnboardingScreen() {
             
             const state = useStore.getState();
             if (!state.isAuthenticated) {
+                router.replace('/signup');
+            } else if (!state.partner1) {
                 router.replace('/welcome');
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');

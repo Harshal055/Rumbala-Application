@@ -35,6 +35,27 @@ const REVENUECAT_API_KEY_GOOGLE =
 const REVENUECAT_API_KEY_WEB =
     process.env.EXPO_PUBLIC_REVENUECAT_WEB_API_KEY;
 
+export function isPlaceholderKey(key?: string | null): boolean {
+    if (!key) return true;
+    const clean = key.trim().toLowerCase();
+    return (
+        clean === '' ||
+        clean.includes('your_') ||
+        clean.includes('placeholder') ||
+        clean.includes('dummy') ||
+        clean.includes('example') ||
+        clean.includes('xxxx')
+    );
+}
+
+export function isRevenueCatConfigured(): boolean {
+    if (Platform.OS === 'web') {
+        return !isPlaceholderKey(REVENUECAT_API_KEY_WEB);
+    }
+    const key = Platform.OS === 'ios' ? REVENUECAT_API_KEY_APPLE : REVENUECAT_API_KEY_GOOGLE;
+    return !isPlaceholderKey(key);
+}
+
 // Entitlements
 export const ENTITLEMENT_PRO = 'Pro';
 export const ENTITLEMENT_CARDS = 'dare_cards';
@@ -87,6 +108,33 @@ const MOCK_OFFERING = {
                         periodNumberOfUnits: 3,
                         cycles: 1
                     },
+                }
+            },
+            {
+                identifier: 'lifetime',
+                packageType: 'LIFETIME',
+                isMock: true,
+                product: {
+                    identifier: 'lifetime',
+                    description: 'Lifetime access to all features forever',
+                    title: 'Lifetime Premium',
+                    price: 2499,
+                    priceString: '₹2,499',
+                    currencyCode: 'INR',
+                    introPrice: null,
+                }
+            },
+            {
+                identifier: 'dare_card_1',
+                packageType: 'CUSTOM',
+                isMock: true,
+                product: {
+                    identifier: 'dare_card_1',
+                    description: 'Get 1 more dare to keep the spark alive',
+                    title: '1 Dare Card',
+                    price: 29,
+                    priceString: '₹29',
+                    currencyCode: 'INR',
                 }
             },
             {
@@ -183,14 +231,23 @@ export interface PurchaseHistoryRecord {
 // ─── Initialize RevenueCat ─────────────────────────────────────
 export async function initRevenueCat(userId?: string): Promise<void> {
     if (isInitialized) {
-        if (userId) await identifyUser(userId);
+        if (userId && isRevenueCatConfigured()) await identifyUser(userId);
+        return;
+    }
+
+    if (!isRevenueCatConfigured()) {
+        if (__DEV__) {
+            console.log('ℹ️ RevenueCat in mock/dev mode (placeholder or missing API key detected in .env)');
+        }
+        isInitialized = true;
         return;
     }
 
     try {
         if (Platform.OS === 'web') {
-            if (!REVENUECAT_API_KEY_WEB) {
-                throw new Error('Missing EXPO_PUBLIC_REVENUECAT_WEB_API_KEY');
+            if (!REVENUECAT_API_KEY_WEB || isPlaceholderKey(REVENUECAT_API_KEY_WEB)) {
+                isInitialized = true;
+                return;
             }
             // Web Initialization
             rcInstance = WebPurchases.configure(REVENUECAT_API_KEY_WEB, userId || undefined);
@@ -198,12 +255,9 @@ export async function initRevenueCat(userId?: string): Promise<void> {
         } else {
             // Native Initialization
             const apiKey = Platform.OS === 'ios' ? REVENUECAT_API_KEY_APPLE : REVENUECAT_API_KEY_GOOGLE;
-            if (!apiKey) {
-                throw new Error(
-                    Platform.OS === 'ios'
-                        ? 'Missing EXPO_PUBLIC_REVENUECAT_IOS_API_KEY'
-                        : 'Missing EXPO_PUBLIC_REVENUECAT_ANDROID_API_KEY',
-                );
+            if (!apiKey || isPlaceholderKey(apiKey)) {
+                isInitialized = true;
+                return;
             }
             NativePurchases.configure({ apiKey, appUserID: userId || undefined });
             rcInstance = NativePurchases;
@@ -215,11 +269,15 @@ export async function initRevenueCat(userId?: string): Promise<void> {
         if (userId) await identifyUser(userId);
     } catch (error: any) {
         console.error('❌ RevenueCat init error:', error.message);
+        isInitialized = true;
     }
 }
 
 // ─── Identify User ─────────────────────────────────────────────
 export async function identifyUser(userId: string): Promise<void> {
+    if (!isRevenueCatConfigured() || !rcInstance) {
+        return;
+    }
     try {
         if (Platform.OS === 'web') {
             await rcInstance.changeUser(userId);
@@ -235,6 +293,10 @@ export async function identifyUser(userId: string): Promise<void> {
 // ─── Get Offerings (Paywall/Products) ──────────────────────────
 export async function getOfferings(): Promise<any | null> {
     try {
+        if (!isRevenueCatConfigured() || !rcInstance) {
+            return MOCK_OFFERING;
+        }
+
         if (!isInitialized) {
             const userId = useStore.getState().userId;
             await initRevenueCat(userId || undefined);
@@ -308,12 +370,15 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
         }
 
         // 🛠️ Mock / Offline Fallback Purchase Handling
-        if (pkg?.isMock || (__DEV__ && (pkgIdentifier === 'monthly' || pkgIdentifier === 'annual'))) {
-            // 🔒 SAFETY: never complete a fake purchase in a production build.
-            // Mock packages are only served when the real store offerings fail to
-            // load. Granting cards / Pro from them in production would give paid
-            // goods away for free, so refuse and ask the user to retry.
-            if (pkg?.isMock && !__DEV__) {
+        const isMockPurchase =
+            pkg?.isMock ||
+            !isRevenueCatConfigured() ||
+            !rcInstance ||
+            (__DEV__ && (pkgIdentifier === 'monthly' || pkgIdentifier === 'annual' || pkgIdentifier === 'lifetime'));
+
+        if (isMockPurchase) {
+            // 🔒 SAFETY: never complete a fake purchase in a production build if live keys are configured.
+            if (pkg?.isMock && !__DEV__ && isRevenueCatConfigured()) {
                 return {
                     success: false,
                     error: 'The store is still getting ready. Please try again in a moment.',
@@ -326,6 +391,9 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
                 return { success: true, cardsAdded };
             } else {
                 await appendPurchaseHistory(pkg, { productId: productId || pkgIdentifier, type: 'subscription' });
+                const store = useStore.getState();
+                const expiry = (pkgIdentifier === 'lifetime' || productId.includes('lifetime')) ? null : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+                store.setIsPro(true, expiry);
                 return { success: true };
             }
         }
@@ -381,8 +449,19 @@ export async function purchasePackage(pkg: any): Promise<{ success: boolean; car
             if (__DEV__) console.log('🚫 Purchase cancelled by user');
             return { success: false, error: 'Purchase cancelled' };
         }
-        console.error('❌ Purchase error:', error.message || error);
-        return { success: false, error: error.message || 'The purchase could not be completed. Please try again.' };
+        const raw = (error.message || String(error || '')).trim();
+        let formatted = raw || 'The purchase could not be completed. Please try again.';
+
+        if (/network|offline|internet|connection|failed to fetch/i.test(raw)) {
+            formatted = 'Unable to reach payment services. Please check your internet connection and try again.';
+        } else if (/store_problem|play store|billing.*unavailable/i.test(raw)) {
+            formatted = 'App store billing is temporarily unavailable. Please try again in a few moments.';
+        } else if (/payment_pending/i.test(raw)) {
+            formatted = 'Payment is pending confirmation. Your access will activate as soon as it clears.';
+        }
+
+        console.error('❌ Purchase error:', formatted);
+        return { success: false, error: formatted };
     }
 }
 
@@ -415,11 +494,14 @@ export function checkProEntitlement(customerInfo: any): boolean {
 }
 
 // ─── Restore Purchases ─────────────────────────────────────────
-export async function restorePurchases(): Promise<any | null> {
+export async function restorePurchases(): Promise<any> {
+    if (!isRevenueCatConfigured() || !rcInstance) {
+        if (__DEV__) console.log('ℹ️ restorePurchases called in mock mode — returning empty mock info');
+        return { entitlements: { active: {} } };
+    }
     try {
         let customerInfo;
         if (Platform.OS === 'web') {
-            // Web doesn't strictly have a "restore purchases" like Apple/Google, it reads from the logged-in user
             customerInfo = await rcInstance.getCustomerInfo();
         } else {
             customerInfo = await NativePurchases.restorePurchases();
@@ -427,13 +509,20 @@ export async function restorePurchases(): Promise<any | null> {
         if (__DEV__) console.log('🔄 Purchases restored');
         return customerInfo;
     } catch (error: any) {
-        console.error('❌ Restore error:', error.message);
-        return null;
+        console.error('❌ Restore error:', error.message || error);
+        const raw = error.message || '';
+        if (/network|offline|internet|connection|failed to fetch/i.test(raw)) {
+            throw new Error('Unable to connect to the app store. Please check your internet connection.');
+        }
+        throw error;
     }
 }
 
 // ─── Get Customer Info ─────────────────────────────────────────
 export async function getCustomerInfo(): Promise<any | null> {
+    if (!isRevenueCatConfigured() || !rcInstance) {
+        return { entitlements: { active: {} } };
+    }
     try {
         if (!isInitialized) {
             const userId = useStore.getState().userId;
@@ -458,6 +547,11 @@ export async function showCustomerCenter(): Promise<void> {
         return;
     }
 
+    if (!isRevenueCatConfigured() || !rcInstance) {
+        if (__DEV__) console.log('Customer Center not available in mock mode.');
+        return;
+    }
+
     try {
         const RevenueCatUI = require('react-native-purchases-ui').default;
         if (RevenueCatUI && RevenueCatUI.presentCustomerCenter) {
@@ -477,9 +571,18 @@ function handleConsumableSuccess(cardsAdded: number, productId: string, pkg?: an
     const newCount = (store.cardCount || 0) + cardsAdded;
     store.setCardCount(newCount);
 
-    // 🔒 SECURITY UPDATE: We no longer call `addUserCards` to update the DB from the client.
-    // The RevenueCat webhook will hit our Edge Function to securely increment the cards in the DB.
-    // The local store is already updated optimistically above, and the Realtime listener will confirm it.
+    // 2. Persist to Supabase database via the add_purchased_cards RPC
+    // As designed in AGENTS.md, consumable cards are granted client-side via
+    // add_purchased_cards (which validates SKU, bounds counts, and writes to purchases atomically).
+    if (store.userId) {
+        addUserCards(store.userId, cardsAdded, productId).then((res: any) => {
+            if (res?.card_count !== undefined) {
+                store.setCardCount(res.card_count);
+            }
+        }).catch((err) => {
+            console.warn('Post-purchase card sync to DB error:', err);
+        });
+    }
 
     appendPurchaseHistory(pkg, { productId, type: 'consumable', cardsAdded }).catch(() => null);
     if (__DEV__) console.log(`🎉 Purchase complete! +${cardsAdded} cards (optimistic total: ${newCount})`);

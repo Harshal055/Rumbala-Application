@@ -8,8 +8,10 @@ import {
   TrendingUp, 
   ShoppingBag, 
   RefreshCw, 
-  Layers
+  Layers,
+  Download
 } from 'lucide-react';
+import { exportToCsv } from '../lib/csvExport';
 
 interface PurchaseItem {
   id?: string;
@@ -78,9 +80,30 @@ export const RevenueView: React.FC = () => {
           </p>
         </div>
 
-        <Button variant="outline" size="sm" onClick={loadRevenueData} disabled={loading}>
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh Revenue
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              exportToCsv(
+                'rumbala_revenue',
+                purchases.map((p) => ({
+                  id: p.id || '',
+                  sku: p.sku,
+                  amount: p.amount ?? (p.amount_paise ? p.amount_paise / 100 : 0),
+                  currency: p.currency || 'INR',
+                  user_id: p.user_id || '',
+                  created_at: p.created_at,
+                }))
+              );
+            }}
+          >
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadRevenueData} disabled={loading}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Refresh Revenue
+          </Button>
+        </div>
       </div>
 
       {/* Hero Stats */}

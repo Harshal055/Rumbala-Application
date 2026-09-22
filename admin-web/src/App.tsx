@@ -12,12 +12,27 @@ import { PromoCodesView } from './views/PromoCodesView';
 import { SupportView } from './views/SupportView';
 import { AuditLogsView } from './views/AuditLogsView';
 import { CrashLogsView } from './views/CrashLogsView';
+import { AiDaresView } from './views/AiDaresView';
+import { LandingPageView } from './views/LandingPageView';
+import { LegalPageView } from './views/LegalPageView';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/card';
-import { Flame, Shield, Lock, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { Flame, ArrowLeft } from 'lucide-react';
+
+function getInitialRoute(): string {
+  if (typeof window === 'undefined') return '/';
+  const path = window.location.pathname.toLowerCase();
+  const hash = window.location.hash.toLowerCase().replace('#', '');
+  if (path === '/privacy' || hash === 'privacy') return '/privacy';
+  if (path === '/terms' || hash === 'terms') return '/terms';
+  if (path === '/delete-account' || hash === 'delete-account') return '/delete-account';
+  if (path === '/admin' || hash === 'admin') return '/admin';
+  return '/';
+}
 
 export function App() {
+  const [route, setRoute] = useState<string>(getInitialRoute());
   const [session, setSession] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -28,6 +43,26 @@ export function App() {
   const [password, setPassword] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
+
+  // Sync route on popstate / hashchange
+  useEffect(() => {
+    const handlePopState = () => {
+      setRoute(getInitialRoute());
+    };
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('hashchange', handlePopState);
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('hashchange', handlePopState);
+    };
+  }, []);
+
+  const navigate = (targetRoute: string) => {
+    setRoute(targetRoute);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', targetRoute);
+    }
+  };
 
   // Check existing session
   useEffect(() => {
@@ -133,13 +168,29 @@ export function App() {
         <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center animate-pulse">
           <Flame className="w-6 h-6 text-primary" />
         </div>
-        <p className="text-sm text-slate-400 font-semibold">Initializing Rumbala Enterprise Gateway...</p>
+        <p className="text-sm text-slate-400 font-semibold">Initializing Rumbala Gateway...</p>
       </div>
     );
   }
 
-  // Login Screen if not authenticated
-  if (!session) {
+  // 1. Legal Compliance Pages (Accessible to everyone)
+  if (route === '/privacy') {
+    return <LegalPageView page="privacy" onNavigate={navigate} />;
+  }
+  if (route === '/terms') {
+    return <LegalPageView page="terms" onNavigate={navigate} />;
+  }
+  if (route === '/delete-account') {
+    return <LegalPageView page="delete-account" onNavigate={navigate} />;
+  }
+
+  // 2. Public Landing Page (Default for root URL)
+  if (route === '/' && (!session || !isAdmin)) {
+    return <LandingPageView onNavigate={navigate} />;
+  }
+
+  // 3. Admin Authentication Portal (if user navigated to /admin and not logged in)
+  if (!session || !isAdmin) {
     return (
       <div className="min-h-screen bg-[#0B0D14] flex items-center justify-center p-4 relative overflow-hidden">
         {/* Ambient Glows */}
@@ -147,8 +198,16 @@ export function App() {
         <div className="absolute bottom-1/4 right-1/3 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="w-full max-w-md relative z-10">
-          <div className="text-center mb-8">
-            <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-500 to-rose-500 items-center justify-center shadow-xl shadow-orange-500/30 mb-4 animate-float">
+          <div className="text-center mb-6">
+            <button
+              onClick={() => navigate('/')}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-white mb-6 font-semibold transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Rumbala Homepage</span>
+            </button>
+
+            <div className="inline-flex w-16 h-16 rounded-2xl bg-gradient-to-tr from-orange-500 to-rose-500 items-center justify-center shadow-xl shadow-orange-500/30 mb-4">
               <Flame className="w-8 h-8 text-white" />
             </div>
             <h1 className="text-3xl font-black text-white tracking-tight">Rumbala Command</h1>
@@ -211,7 +270,7 @@ export function App() {
                 <Button
                   type="button"
                   variant="outline"
-                  className="w-full h-11 bg-white hover:bg-slate-100 text-slate-900 border-none font-bold flex items-center justify-center"
+                  className="w-full h-11 bg-white hover:bg-slate-100 text-slate-900 border-none font-bold flex items-center justify-center cursor-pointer"
                   onClick={handleGoogleSignIn}
                   disabled={authLoading}
                 >
@@ -231,6 +290,7 @@ export function App() {
     );
   }
 
+  // 4. Authenticated Admin Dashboard
   return (
     <div className="min-h-screen bg-[#0B0D14] flex">
       {/* Navigation Sidebar */}
@@ -248,6 +308,7 @@ export function App() {
           {currentView === 'dashboard' && <DashboardView onNavigate={setCurrentView} />}
           {currentView === 'revenue' && <RevenueView />}
           {currentView === 'users' && <UsersView />}
+          {currentView === 'ai-dares' && <AiDaresView />}
           {currentView === 'ldr' && <LdrRoomsView />}
           {currentView === 'features' && <FeatureFlagsView />}
           {currentView === 'crashes' && <CrashLogsView />}

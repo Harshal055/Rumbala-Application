@@ -15,16 +15,15 @@ interface LegalModalProps {
 }
 
 export default function LegalModal({ visible, onClose, type }: LegalModalProps) {
+    if (!visible) return null;
     const title = type === 'terms' ? 'Terms of Service' : 'Privacy Policy';
     
     return (
         <Modal
-            visible={visible}
+            visible={true}
             animationType="slide"
             transparent={true}
             onRequestClose={onClose}
-            hardwareAccelerated={true}
-            statusBarTranslucent={true}
         >
             <View style={styles.overlay}>
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.6)' }]} />

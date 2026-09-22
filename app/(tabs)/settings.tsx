@@ -605,6 +605,7 @@ export default function SettingsScreen() {
                         </TouchableOpacity>
                     </Animated.View>
 
+                    <Text style={styles.versionText}>Version 1.0.1 (1)</Text>
                     <View style={{ height: 100 }} />
                 </ScrollView>
 
@@ -996,6 +997,7 @@ const styles = StyleSheet.create({
 
     logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 20, paddingVertical: 16, gap: 10, borderWidth: 1.5 },
     logoutText: { fontSize: 16, fontWeight: '800', color: '#EF4444' },
+    versionText: { color: '#999', fontSize: 12, fontWeight: '600', textAlign: 'center', marginTop: 18 },
 
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
     modalSheet: { 

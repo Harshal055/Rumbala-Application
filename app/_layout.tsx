@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import CustomAlert from '../src/components/CustomAlert';
 import MaintenanceOverlay from '../src/components/MaintenanceOverlay';
 import UpdateOverlay from '../src/components/UpdateOverlay';
+import OfflineBanner from '../src/components/OfflineBanner';
 import { initNotifications } from '../src/services/notificationService';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ErrorBoundary from '../src/components/ErrorBoundary';
@@ -184,6 +185,7 @@ export default function RootLayout() {
                         <Stack.Screen name="welcome" options={{ animation: 'fade' }} />
                         <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
                         <Stack.Screen name="ai-generator" options={{ animation: 'slide_from_right', presentation: 'card' }} />
+                        <Stack.Screen name="favorites" options={{ animation: 'slide_from_right', presentation: 'card' }} />
                         <Stack.Screen name="quiz" options={{ animation: 'slide_from_right', presentation: 'card' }} />
                         <Stack.Screen name="subscription" options={{ animation: 'slide_from_bottom', presentation: 'modal' }} />
                         <Stack.Screen name="admin" options={{ animation: 'slide_from_right', presentation: 'card' }} />
@@ -192,6 +194,7 @@ export default function RootLayout() {
                     <MaintenanceOverlay />
                     <UpdateOverlay />
                     <CustomAlert />
+                    <OfflineBanner />
                 </SafeAreaProvider>
             </GestureHandlerRootView>
         </ErrorBoundary>

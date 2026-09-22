@@ -130,13 +130,13 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
         );
     };
 
+    if (!visible) return null;
+
     return (
         <Modal 
-            visible={visible} 
+            visible={true} 
             animationType="slide" 
             transparent 
-            hardwareAccelerated={true}
-            statusBarTranslucent={true}
         >
             <View style={s.overlay}>
                 <View style={s.modalContainer}>

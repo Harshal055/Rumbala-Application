@@ -6,10 +6,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useStore } from '../src/store/useStore';
-import { signupV2 } from '../src/services/api';
+import { signupV2, verifySignupOtp, resendSignupOtp } from '../src/services/api';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import AnimatedBackground from '../src/components/AnimatedBackground';
@@ -24,7 +24,8 @@ const BG_COLORS = ['#F5FAF9', '#E0F2F1', '#B2DFDB'];
 
 export default function SignupScreen() {
     const router = useRouter();
-    const { login, showAlert } = useStore();
+    const params = useLocalSearchParams<{ verifyEmail?: string }>();
+    const { login, showAlert, setPartners } = useStore();
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -34,10 +35,32 @@ export default function SignupScreen() {
     const [legalType, setLegalType] = useState<'terms' | 'privacy'>('terms');
     const [googleLoading, setGoogleLoading] = useState(false);
 
+    // OTP verification state
+    const [isVerifyingOtp, setIsVerifyingOtp] = useState(false);
+    const [otp, setOtp] = useState('');
+    const [resendCooldown, setResendCooldown] = useState(0);
+
+    // If redirected with verifyEmail, auto-open OTP verification mode
+    React.useEffect(() => {
+        if (params?.verifyEmail) {
+            setEmail(params.verifyEmail);
+            setIsVerifyingOtp(true);
+            setResendCooldown(30);
+        }
+    }, [params?.verifyEmail]);
+
+    // Cooldown timer for resend OTP
+    React.useEffect(() => {
+        let timer: any;
+        if (resendCooldown > 0) {
+            timer = setTimeout(() => setResendCooldown(resendCooldown - 1), 1000);
+        }
+        return () => clearTimeout(timer);
+    }, [resendCooldown]);
+
     React.useEffect(() => {
         const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
-        console.log('SignupScreen: Configuring GoogleSignin with webClientId:', webClientId);
-        if (webClientId) {
+        if (webClientId && !webClientId.includes('YOUR_')) {
             GoogleSignin.configure({
                 webClientId: webClientId,
                 iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
@@ -50,8 +73,9 @@ export default function SignupScreen() {
     const handleGoogleSignIn = async () => {
         try {
             setGoogleLoading(true);
-            if (!process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID) {
-                throw new Error('Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env');
+            const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID;
+            if (!webClientId || webClientId.includes('YOUR_')) {
+                throw new Error('Google Sign-In is not configured. Set EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in .env, then rebuild the app.');
             }
             await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
             await GoogleSignin.signOut().catch(() => null);
@@ -105,8 +129,13 @@ export default function SignupScreen() {
 
     const handleBack = () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        if (router.canGoBack()) router.back();
-        else router.replace('/intro');
+        if (isVerifyingOtp) {
+            setIsVerifyingOtp(false);
+        } else if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/intro');
+        }
     };
 
     const handleSignup = async () => {
@@ -121,11 +150,16 @@ export default function SignupScreen() {
 
         setIsLoading(true);
         try {
-            const result = await signupV2(email.trim(), password);
+            const result = await signupV2(email.trim(), password, fullName.trim());
             if (result.needs_email_confirmation) {
-                showAlert('Email Verification', result.message || 'A confirmation email has been sent to your address.');
-                router.push('/login');
+                setIsVerifyingOtp(true);
+                setResendCooldown(60);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+                showAlert('Code Sent!', `A verification code was sent to ${email.trim()}. Enter it below to activate your account.`);
             } else {
+                if (fullName.trim()) {
+                    setPartners(fullName.trim(), '');
+                }
                 const state = useStore.getState();
                 if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
                     router.replace('/onboarding');
@@ -136,11 +170,75 @@ export default function SignupScreen() {
                 }
             }
         } catch (error: any) {
-            showAlert('Registration Error', error.message || 'We couldn\'t create your account. Please try again.');
+            const msg = error?.message || '';
+            if (/already exists/i.test(msg) || /already registered/i.test(msg)) {
+                showAlert(
+                    'Account Already Exists',
+                    'An account with this email already exists. Would you like to log in?',
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                            text: 'Log In', 
+                            onPress: () => router.push({
+                                pathname: '/login',
+                                params: { prefillEmail: email.trim().toLowerCase() }
+                            })
+                        }
+                    ]
+                );
+            } else {
+                showAlert('Registration Error', msg || 'We couldn\'t create your account. Please try again.');
+            }
         } finally {
             setIsLoading(false);
         }
     };
+
+    const handleVerifyOtp = async () => {
+        const cleanOtp = otp.trim();
+        if (!cleanOtp || cleanOtp.length < 6 || cleanOtp.length > 8) {
+            showAlert('Invalid Code', 'Please enter the valid verification code.');
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await verifySignupOtp(email.trim(), cleanOtp);
+            if (fullName.trim()) {
+                setPartners(fullName.trim(), '');
+            }
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            showAlert('Account Verified! 🎉', 'Welcome to Rumbala!');
+
+            const state = useStore.getState();
+            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                router.replace('/onboarding');
+            } else if (!state.partner1) {
+                router.replace('/welcome');
+            } else {
+                router.replace('/subscription');
+            }
+        } catch (error: any) {
+            showAlert('Verification Failed', error.message || 'Invalid or expired code. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleResendOtp = async () => {
+        setIsLoading(true);
+        try {
+            await resendSignupOtp(email.trim());
+            setResendCooldown(60);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            showAlert('Code Resent', `A new verification code has been sent to ${email.trim()}.`);
+        } catch (error: any) {
+            showAlert('Error', error.message || 'Failed to resend verification code.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
@@ -166,129 +264,195 @@ export default function SignupScreen() {
                             <Animated.View entering={FadeInDown.delay(100).duration(600)} style={styles.logoHeader}>
                                 <View style={[styles.logoBox, glassStyles.container]}>
                                     <LinearGradient colors={['#FF6B35', '#FF9800']} style={styles.logoGradient}>
-                                        <Ionicons name="heart" size={32} color="#fff" />
+                                        <Ionicons name={isVerifyingOtp ? "shield-checkmark" : "heart"} size={32} color="#fff" />
                                     </LinearGradient>
                                 </View>
-                                <Text style={styles.title}>Join Rumbala</Text>
-                                <Text style={styles.subtitle}>The ultimate couple's gaming experience</Text>
+                                <Text style={styles.title}>
+                                    {isVerifyingOtp ? 'Verify Email' : 'Join Rumbala'}
+                                </Text>
+                                <Text style={styles.subtitle}>
+                                    {isVerifyingOtp
+                                        ? `Enter the verification code sent to ${email}`
+                                        : "The ultimate couple's gaming experience"}
+                                </Text>
                             </Animated.View>
 
                         <Animated.View entering={FadeInUp.delay(200).duration(600)} style={[styles.form, glassStyles.container, { padding: 24, borderRadius: 32 }]}>
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Full Name</Text>
-                                <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
-                                    <Ionicons name="person-outline" size={20} color="#888" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="John Doe"
-                                        placeholderTextColor="#999"
-                                        value={fullName}
-                                        onChangeText={setFullName}
-                                    />
-                                </View>
-                            </View>
+                            {isVerifyingOtp ? (
+                                /* ───────── OTP Verification View ───────── */
+                                <>
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.label}>Verification Code</Text>
+                                        <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                                            <Ionicons name="keypad-outline" size={20} color="#FF6B35" />
+                                            <TextInput
+                                                style={[styles.input, styles.otpInput]}
+                                                placeholder="Enter code"
+                                                placeholderTextColor="#999"
+                                                value={otp}
+                                                onChangeText={(t) => setOtp(t.replace(/[^0-9]/g, '').slice(0, 8))}
+                                                keyboardType="number-pad"
+                                                maxLength={8}
+                                                autoFocus
+                                            />
+                                        </View>
+                                    </View>
 
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Email Address</Text>
-                                <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
-                                    <Ionicons name="mail-outline" size={20} color="#888" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="john@example.com"
-                                        placeholderTextColor="#999"
-                                        value={email}
-                                        onChangeText={setEmail}
-                                        keyboardType="email-address"
-                                        autoCapitalize="none"
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.inputGroup}>
-                                <Text style={styles.label}>Password</Text>
-                                <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
-                                    <Ionicons name="lock-closed-outline" size={20} color="#888" />
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="••••••••"
-                                        placeholderTextColor="#999"
-                                        value={password}
-                                        onChangeText={setPassword}
-                                        secureTextEntry
-                                    />
-                                </View>
-                            </View>
-
-                            <View style={styles.checkboxRow}>
-                                <TouchableOpacity 
-                                    style={[styles.checkbox, glassStyles.container, agree && styles.checkboxActive]}
-                                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAgree(!agree); }}
-                                    activeOpacity={0.7}
-                                >
-                                    {agree && <Ionicons name="checkmark" size={14} color="#fff" />}
-                                </TouchableOpacity>
-                                <Text style={styles.checkboxText}>
-                                    I agree to the{' '}
-                                    <Text 
-                                        style={styles.linkText} 
-                                        onPress={() => { setLegalType('terms'); setLegalVisible(true); }}
+                                    <TouchableOpacity
+                                        style={styles.primaryBtn}
+                                        onPress={handleVerifyOtp}
+                                        disabled={isLoading}
+                                        activeOpacity={0.85}
                                     >
-                                        Terms
-                                    </Text>
-                                    {' '}and{' '}
-                                    <Text 
-                                        style={styles.linkText} 
-                                        onPress={() => { setLegalType('privacy'); setLegalVisible(true); }}
+                                        <LinearGradient
+                                            colors={['#FF6B35', '#FF4D17']}
+                                            style={styles.btnGradient}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                        >
+                                            {isLoading ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <Text style={styles.primaryBtnText}>Verify & Continue</Text>
+                                            )}
+                                        </LinearGradient>
+                                    </TouchableOpacity>
+
+                                    <View style={styles.otpFooterRow}>
+                                        <TouchableOpacity
+                                            onPress={handleResendOtp}
+                                            disabled={resendCooldown > 0 || isLoading}
+                                        >
+                                            <Text style={[styles.otpFooterText, resendCooldown > 0 && { color: '#999' }]}>
+                                                {resendCooldown > 0 ? `Resend code (${resendCooldown}s)` : 'Resend code'}
+                                            </Text>
+                                        </TouchableOpacity>
+
+                                        <TouchableOpacity onPress={() => setIsVerifyingOtp(false)}>
+                                            <Text style={styles.otpFooterText}>Change email</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            ) : (
+                                /* ───────── Standard Signup View ───────── */
+                                <>
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.label}>Full Name</Text>
+                                        <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                                            <Ionicons name="person-outline" size={20} color="#888" />
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="John Doe"
+                                                placeholderTextColor="#999"
+                                                value={fullName}
+                                                onChangeText={setFullName}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.label}>Email Address</Text>
+                                        <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                                            <Ionicons name="mail-outline" size={20} color="#888" />
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="john@example.com"
+                                                placeholderTextColor="#999"
+                                                value={email}
+                                                onChangeText={setEmail}
+                                                keyboardType="email-address"
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.inputGroup}>
+                                        <Text style={styles.label}>Password</Text>
+                                        <View style={[styles.inputRow, glassStyles.container, { backgroundColor: 'rgba(0,0,0,0.02)' }]}>
+                                            <Ionicons name="lock-closed-outline" size={20} color="#888" />
+                                            <TextInput
+                                                style={styles.input}
+                                                placeholder="••••••••"
+                                                placeholderTextColor="#999"
+                                                value={password}
+                                                onChangeText={setPassword}
+                                                secureTextEntry
+                                            />
+                                        </View>
+                                    </View>
+
+                                    <View style={styles.checkboxRow}>
+                                        <TouchableOpacity 
+                                            style={[styles.checkbox, glassStyles.container, agree && styles.checkboxActive]}
+                                            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAgree(!agree); }}
+                                            activeOpacity={0.7}
+                                        >
+                                            {agree && <Ionicons name="checkmark" size={14} color="#fff" />}
+                                        </TouchableOpacity>
+                                        <Text style={styles.checkboxText}>
+                                            I agree to the{' '}
+                                            <Text 
+                                                style={styles.linkText} 
+                                                onPress={() => { setLegalType('terms'); setLegalVisible(true); }}
+                                            >
+                                                Terms
+                                            </Text>
+                                            {' '}and{' '}
+                                            <Text 
+                                                style={styles.linkText} 
+                                                onPress={() => { setLegalType('privacy'); setLegalVisible(true); }}
+                                            >
+                                                Privacy Policy
+                                            </Text>
+                                        </Text>
+                                    </View>
+
+                                    <TouchableOpacity style={styles.primaryBtn} onPress={handleSignup} disabled={isLoading} activeOpacity={0.85}>
+                                        <LinearGradient 
+                                            colors={['#FF6B35', '#FF4D17']} 
+                                            style={styles.btnGradient}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                        >
+                                            {isLoading ? (
+                                                <ActivityIndicator size="small" color="#fff" />
+                                            ) : (
+                                                <Text style={styles.primaryBtnText}>Create Account</Text>
+                                            )}
+                                        </LinearGradient>
+                                    </TouchableOpacity>
+
+                                    <View style={styles.divider}>
+                                        <View style={styles.line} />
+                                        <Text style={styles.dividerText}>OR SIGN UP WITH</Text>
+                                        <View style={styles.line} />
+                                    </View>
+
+                                    <TouchableOpacity 
+                                        style={[styles.socialBtnFull, glassStyles.container, googleLoading && styles.socialBtnDisabled]} 
+                                        onPress={handleGoogleSignIn}
+                                        disabled={googleLoading}
                                     >
-                                        Privacy Policy
-                                    </Text>
-                                </Text>
-                            </View>
+                                        {googleLoading ? (
+                                            <ActivityIndicator size="small" color="#FF6B35" />
+                                        ) : (
+                                            <>
+                                                <Ionicons name="logo-google" size={24} color="#4285F4" />
+                                                <Text style={styles.socialBtnTextFull}>Continue with Google</Text>
+                                            </>
+                                        )}
+                                    </TouchableOpacity>
 
-                            <TouchableOpacity style={styles.primaryBtn} onPress={handleSignup} disabled={isLoading} activeOpacity={0.85}>
-                                <LinearGradient 
-                                    colors={['#FF6B35', '#FF4D17']} 
-                                    style={styles.btnGradient}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 0 }}
-                                >
-                                    {isLoading ? (
-                                        <ActivityIndicator size="small" color="#fff" />
-                                    ) : (
-                                        <Text style={styles.primaryBtnText}>Create Account</Text>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-
-                            <View style={styles.divider}>
-                                <View style={styles.line} />
-                                <Text style={styles.dividerText}>OR SIGN UP WITH</Text>
-                                <View style={styles.line} />
-                            </View>
-
-                            <TouchableOpacity 
-                                style={[styles.socialBtnFull, glassStyles.container, googleLoading && styles.socialBtnDisabled]} 
-                                onPress={handleGoogleSignIn}
-                                disabled={googleLoading}
-                            >
-                                {googleLoading ? (
-                                    <ActivityIndicator size="small" color="#FF6B35" />
-                                ) : (
-                                    <>
-                                        <Ionicons name="logo-google" size={24} color="#4285F4" />
-                                        <Text style={styles.socialBtnTextFull}>Continue with Google</Text>
-                                    </>
-                                )}
-                            </TouchableOpacity>
-
-                            <TouchableOpacity 
-                                style={styles.footer} 
-                                onPress={() => router.push('/login')}
-                            >
-                                <Text style={styles.footerText}>
-                                    Already have an account? <Text style={styles.footerLink}>Log In</Text>
-                                </Text>
-                            </TouchableOpacity>
+                                    <TouchableOpacity 
+                                        style={styles.footer} 
+                                        onPress={() => router.push('/login')}
+                                    >
+                                        <Text style={styles.footerText}>
+                                            Already have an account? <Text style={styles.footerLink}>Log In</Text>
+                                        </Text>
+                                    </TouchableOpacity>
+                                </>
+                            )}
                         </Animated.View>
                             <View style={{ height: 40 }} />
                         </ScrollView>
@@ -345,4 +509,8 @@ const styles = StyleSheet.create({
     footer: { alignItems: 'center' },
     footerText: { fontSize: 15, color: '#666', fontWeight: '500' },
     footerLink: { color: '#FF6B35', fontWeight: '900' },
+
+    otpInput: { fontSize: 22, letterSpacing: 6, fontWeight: '800', color: '#FF6B35' },
+    otpFooterRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 4, paddingHorizontal: 4 },
+    otpFooterText: { fontSize: 14, color: '#FF6B35', fontWeight: '700' },
 });

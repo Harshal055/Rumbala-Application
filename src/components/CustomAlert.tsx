@@ -1,7 +1,7 @@
 import React from 'react';
 import { 
     View, Text, StyleSheet, Modal, TouchableOpacity, 
-    Dimensions, Platform 
+    TouchableWithoutFeedback, Dimensions, Platform 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { FadeInDown, FadeOut, ZoomIn } from 'react-native-reanimated';
@@ -15,6 +15,8 @@ const { width } = Dimensions.get('window');
 export default function CustomAlert() {
     const { alertConfig, hideAlert } = useStore();
     const { visible, title, message, buttons } = alertConfig;
+
+    if (!visible) return null;
 
     const getIcon = (titleText: string) => {
         const lowerTitle = titleText.toLowerCase();
@@ -35,22 +37,23 @@ export default function CustomAlert() {
     const handleButtonPress = (onPress?: () => void) => {
         hideAlert();
         if (onPress) {
-            // Delay slightly to allow modal to close smoothly
-            setTimeout(onPress, 150);
+            onPress();
         }
     };
 
     return (
         <Modal
-            visible={visible}
+            visible={true}
             transparent={true}
             animationType="fade"
             onRequestClose={hideAlert}
-            hardwareAccelerated={true}
-            statusBarTranslucent={true}
         >
-            {visible && (
-                <View style={styles.overlay}>
+            <TouchableOpacity 
+                style={styles.overlay}
+                activeOpacity={1}
+                onPress={hideAlert}
+            >
+                <TouchableWithoutFeedback>
                     <Animated.View 
                         entering={FadeInDown.springify().damping(15).stiffness(100)} 
                         exiting={FadeOut.duration(200)}
@@ -126,8 +129,8 @@ export default function CustomAlert() {
                             )}
                         </View>
                     </Animated.View>
-                </View>
-            )}
+                </TouchableWithoutFeedback>
+            </TouchableOpacity>
         </Modal>
     );
 }
