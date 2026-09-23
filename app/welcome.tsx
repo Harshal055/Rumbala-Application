@@ -81,29 +81,23 @@ export default function WelcomeScreen() {
                             keyboardShouldPersistTaps="handled"
                             showsVerticalScrollIndicator={false}
                         >
-                        {/* Top Nav */}
+                        {/* Top Nav & Compact Brand Header */}
                         <Animated.View entering={FadeInDown.duration(400)} style={styles.topNav}>
-                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                                <Ionicons name="arrow-back" size={22} color="#fff" />
+                            <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>
+                                <Ionicons name="arrow-back" size={20} color="#fff" />
                             </TouchableOpacity>
-                        </Animated.View>
-
-                        {/* Logo area */}
-                        <Animated.View 
-                            entering={FadeInDown.delay(100).duration(600)} 
-                            renderToHardwareTextureAndroid={true}
-                            style={styles.logoSection}
-                        >
-                            <View style={[styles.logoCircle, glassStyles.container, { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
-                                <Ionicons name="heart" size={24} color="#fff" />
+                            <View style={styles.headerBrandRow}>
+                                <View style={styles.logoCircle}>
+                                    <Ionicons name="heart" size={16} color="#fff" />
+                                </View>
+                                <Text style={styles.brandName}>Rumbala</Text>
                             </View>
-                            <Text style={styles.brandName}>Rumbala</Text>
-                            <Text style={styles.brandTagline}>Dare the distance with your partner ✨</Text>
+                            <View style={{ width: 38 }} />
                         </Animated.View>
 
                         {/* Main Card */}
                         <Animated.View 
-                            entering={FadeInUp.delay(300).duration(800)} 
+                            entering={FadeInUp.delay(200).duration(600)} 
                             renderToHardwareTextureAndroid={true}
                             style={[styles.card, glassStyles.container]}
                         >
@@ -114,7 +108,7 @@ export default function WelcomeScreen() {
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Your Name</Text>
                                 <View style={[styles.inputRow, glassStyles.container, name1Focused && styles.inputRowFocused]}>
-                                    <Ionicons name="person-outline" size={18} color={name1Focused ? '#FF6B35' : '#888'} />
+                                    <Ionicons name="person-outline" size={16} color={name1Focused ? '#FF6B35' : '#888'} />
                                     <TextInput
                                         style={styles.input}
                                         placeholder="e.g. Harshal"
@@ -132,7 +126,7 @@ export default function WelcomeScreen() {
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Partner's Name</Text>
                                 <View style={[styles.inputRow, glassStyles.container, name2Focused && styles.inputRowFocused]}>
-                                    <Ionicons name="heart-outline" size={18} color={name2Focused ? '#FF6B35' : '#888'} />
+                                    <Ionicons name="heart-outline" size={16} color={name2Focused ? '#FF6B35' : '#888'} />
                                     <TextInput
                                         style={styles.input}
                                         placeholder="e.g. Priya"
@@ -150,7 +144,7 @@ export default function WelcomeScreen() {
                             <View style={styles.inputGroup}>
                                 <Text style={styles.label}>Partner's Email (Optional)</Text>
                                 <View style={[styles.inputRow, glassStyles.container, emailFocused && styles.inputRowFocused]}>
-                                    <Ionicons name="mail-outline" size={18} color={emailFocused ? '#FF6B35' : '#888'} />
+                                    <Ionicons name="mail-outline" size={16} color={emailFocused ? '#FF6B35' : '#888'} />
                                     <TextInput
                                         style={styles.input}
                                         placeholder="partner@example.com"
@@ -186,10 +180,10 @@ export default function WelcomeScreen() {
                                                     end={{ x: 1, y: 0 }}
                                                 />
                                             )}
-                                            {!isSelected && <View style={[styles.vibeImg, { backgroundColor: v.solidColor, borderRadius: 12 }]} />}
-                                            {isSelected && <Ionicons name="checkmark-circle" size={24} color="#fff" style={{ marginBottom: 12 }} />}
+                                            {!isSelected && <View style={[styles.vibeImg, { backgroundColor: v.solidColor, borderRadius: 8 }]} />}
+                                            {isSelected && <Ionicons name="checkmark-circle" size={18} color="#fff" style={{ marginBottom: 4 }} />}
                                             <Text style={[styles.vibeLabel, { color: isSelected ? '#fff' : '#1a1a1a' }]}>{v.label}</Text>
-                                            <Text style={[styles.vibeDesc, { color: isSelected ? 'rgba(255,255,255,0.8)' : '#666' }]}>{v.desc}</Text>
+                                            <Text style={[styles.vibeDesc, { color: isSelected ? 'rgba(255,255,255,0.85)' : '#666' }]}>{v.desc}</Text>
                                         </TouchableOpacity>
                                     );
                                 })}
@@ -200,19 +194,17 @@ export default function WelcomeScreen() {
                                 <LinearGradient colors={['#FF6B35', '#FF9800']} style={styles.startGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}>
                                     <View style={styles.btnContent}>
                                         <Text style={styles.startText}>Start Rumble!</Text>
-                                        <Ionicons name="sparkles" size={18} color="#fff" />
+                                        <Ionicons name="sparkles" size={16} color="#fff" />
                                     </View>
                                 </LinearGradient>
                             </TouchableOpacity>
 
                             {/* Trust line */}
                             <View style={styles.trustRow}>
-                                <Ionicons name="shield-checkmark" size={14} color="#10B981" />
+                                <Ionicons name="shield-checkmark" size={13} color="#10B981" />
                                 <Text style={styles.trustText}>5 FREE dare cards • Private & Encrypted</Text>
                             </View>
                         </Animated.View>
-
-                            <View style={{ height: 60 }} />
                         </ScrollView>
                     </TouchableWithoutFeedback>
                 </KeyboardAvoidingView>
@@ -223,39 +215,44 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: 'transparent' },
-    scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 40, paddingBottom: 40, alignItems: 'center' },
+    scroll: { flexGrow: 1, paddingHorizontal: 16, paddingTop: 4, paddingBottom: 16, alignItems: 'center' },
     
-    topNav: { width: '100%', marginBottom: 12, alignItems: 'flex-start' },
-    backBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+    topNav: { 
+        width: '100%', 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        marginBottom: 10,
+        paddingHorizontal: 4,
+    },
+    backBtn: { width: 38, height: 38, borderRadius: 19, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.2)' },
+    headerBrandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    logoCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.25)' },
+    brandName: { fontFamily: 'Pacifico_400Regular', fontSize: 26, color: '#fff', letterSpacing: 0.5 },
 
-    logoSection: { alignItems: 'center', marginBottom: 32 },
-    logoCircle: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-    brandName: { fontFamily: 'Pacifico_400Regular', fontSize: 48, color: '#fff', letterSpacing: 0.5, lineHeight: 60 },
-    brandTagline: { fontSize: 15, color: 'rgba(255,255,255,0.9)', fontWeight: '700', letterSpacing: 0.2 },
+    card: { borderRadius: 26, paddingHorizontal: 18, paddingVertical: 18, width: '100%', maxWidth: 420 },
+    cardTitle: { fontSize: 21, fontWeight: '900', color: '#1a1a1a', marginBottom: 2, textAlign: 'center' },
+    cardSubtitle: { fontSize: 12, color: '#666', marginBottom: 14, textAlign: 'center', fontWeight: '500' },
 
-    card: { borderRadius: 32, padding: 24, width: '100%', maxWidth: 420 },
-    cardTitle: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', marginBottom: 6, textAlign: 'center' },
-    cardSubtitle: { fontSize: 14, color: '#666', marginBottom: 28, textAlign: 'center', fontWeight: '500' },
-
-    inputGroup: { marginBottom: 18 },
-    label: { fontSize: 13, fontWeight: '800', color: '#555', marginBottom: 8, marginLeft: 4 },
-    inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 2, gap: 10, backgroundColor: 'rgba(0,0,0,0.02)' },
+    inputGroup: { marginBottom: 10 },
+    label: { fontSize: 12, fontWeight: '800', color: '#555', marginBottom: 4, marginLeft: 2 },
+    inputRow: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, paddingHorizontal: 14, height: 44, gap: 8, backgroundColor: 'rgba(0,0,0,0.02)' },
     inputRowFocused: { borderColor: '#FF6B35', borderBottomWidth: 2 },
-    input: { flex: 1, paddingVertical: 14, fontSize: 16, color: '#1a1a1a', fontWeight: '600' },
+    input: { flex: 1, fontSize: 15, color: '#1a1a1a', fontWeight: '600' },
 
-    vibeTitle: { fontSize: 13, fontWeight: '800', color: '#555', marginBottom: 12, marginTop: 4, marginLeft: 4 },
-    vibeRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-    vibeCard: { flex: 1, alignItems: 'center', paddingVertical: 20, paddingHorizontal: 4, borderRadius: 22, overflow: 'hidden' },
+    vibeTitle: { fontSize: 12, fontWeight: '800', color: '#555', marginBottom: 6, marginTop: 2, marginLeft: 2 },
+    vibeRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
+    vibeCard: { flex: 1, alignItems: 'center', paddingVertical: 10, paddingHorizontal: 2, borderRadius: 16, overflow: 'hidden' },
     vibeCardSelected: { borderColor: 'transparent' },
-    vibeImg: { width: 40, height: 40, marginBottom: 10 },
-    vibeLabel: { fontSize: 14, fontWeight: '800', marginBottom: 2 },
-    vibeDesc: { fontSize: 10, fontWeight: '700', textAlign: 'center' },
+    vibeImg: { width: 22, height: 22, marginBottom: 4 },
+    vibeLabel: { fontSize: 12, fontWeight: '800', marginBottom: 1 },
+    vibeDesc: { fontSize: 9, fontWeight: '600', textAlign: 'center' },
 
-    startBtn: { borderRadius: 20, overflow: 'hidden' },
-    startGradient: { paddingVertical: 18 },
-    btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
-    startText: { color: '#fff', fontSize: 18, fontWeight: '900' },
+    startBtn: { borderRadius: 16, overflow: 'hidden', marginTop: 4 },
+    startGradient: { paddingVertical: 13 },
+    btnContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    startText: { color: '#fff', fontSize: 16, fontWeight: '900' },
 
-    trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 24 },
-    trustText: { fontSize: 12, color: '#999', fontWeight: '700' },
+    trustRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 8 },
+    trustText: { fontSize: 11, color: '#888', fontWeight: '700' },
 });
