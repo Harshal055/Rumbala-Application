@@ -27,7 +27,8 @@ export default function DailyRetentionScreen() {
         answerDailyQuestion, 
         refreshDailyResponses,
         milestones,
-        partner1, partner2, isPro, cardCount
+        partner1, partner2, isPro, cardCount,
+        showAlert, remoteConfigs
     } = useStore(useShallow(state => ({
         streak: state.streak,
         dailyQuestion: state.dailyQuestion,
@@ -37,8 +38,11 @@ export default function DailyRetentionScreen() {
         partner1: state.partner1,
         partner2: state.partner2,
         isPro: state.isPro,
-        cardCount: state.cardCount
+        cardCount: state.cardCount,
+        showAlert: state.showAlert,
+        remoteConfigs: state.remoteConfigs,
     })));
+    const isDailyRewardsEnabled = remoteConfigs?.feature_flags?.daily_rewards ?? true;
 
     const [answer, setAnswer] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -84,6 +88,10 @@ export default function DailyRetentionScreen() {
     }));
 
     const handleSubmit = async () => {
+        if (!isDailyRewardsEnabled) {
+            showAlert('Daily Paused', 'Daily couple questions and streaks are temporarily paused by admin.');
+            return;
+        }
         if (!answer.trim()) return;
         setIsSubmitting(true);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -138,6 +146,13 @@ export default function DailyRetentionScreen() {
                             showsVerticalScrollIndicator={false}
                             keyboardShouldPersistTaps="handled"
                         >
+                            {!isDailyRewardsEnabled && (
+                                <Animated.View entering={FadeInDown.duration(400)} style={{ backgroundColor: 'rgba(255, 107, 53, 0.12)', borderColor: 'rgba(255, 107, 53, 0.35)', borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}>
+                                    <Ionicons name="pause-circle-outline" size={22} color="#FF6B35" style={{ marginRight: 10 }} />
+                                    <Text style={{ flex: 1, fontSize: 13, color: '#333', fontWeight: '500', lineHeight: 18 }}>Daily Question & Streak rewards are temporarily paused for scheduled maintenance.</Text>
+                                </Animated.View>
+                            )}
+
                     {/* ── Streak Header ── */}
                     <Animated.View 
                         entering={FadeInDown.delay(200).duration(800)} 

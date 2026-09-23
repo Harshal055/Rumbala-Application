@@ -743,6 +743,18 @@ export default function LdrScreen() {
         return () => sub.remove();
     }, [isJoined]);
 
+    // Live video kill-switch handler
+    useEffect(() => {
+        if (isJoined && roomData?.room_type === 'video' && remoteConfigs?.feature_flags?.video_calls === false) {
+            showAlert('Video Paused', 'Live video calling has been temporarily disabled by admin. Continuing in audio/text mode.');
+            if (engine.current) {
+                try {
+                    engine.current.muteLocalVideoStream?.(true);
+                } catch {}
+            }
+        }
+    }, [remoteConfigs?.feature_flags?.video_calls, isJoined, roomData?.room_type]);
+
     const handleCreateRoom = async () => {
         if (!userId) { showAlert('Login Required', 'Please log in first to create a room.'); return; }
         if (remoteConfigs?.feature_flags?.room_creation === false) {

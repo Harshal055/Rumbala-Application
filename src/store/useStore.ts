@@ -230,7 +230,27 @@ export const useStore = create<ApplicationState>((set, get) => ({
             console.warn('Error fetching remote configs', e);
         }
     },
-    setRemoteConfigs: (configs) => set({ remoteConfigs: configs }),
+    setRemoteConfigs: (configs) => {
+        if (!configs || Object.keys(configs).length === 0) return;
+        set(state => ({
+            remoteConfigs: {
+                ...state.remoteConfigs,
+                ...configs,
+                feature_flags: {
+                    ...state.remoteConfigs.feature_flags,
+                    ...(configs.feature_flags || {}),
+                },
+                maintenance_mode: {
+                    ...state.remoteConfigs.maintenance_mode,
+                    ...(configs.maintenance_mode || {}),
+                },
+                app_update: {
+                    ...state.remoteConfigs.app_update,
+                    ...(configs.app_update || {}),
+                }
+            }
+        }));
+    },
 
     partner1: null,
     partner2: null,
@@ -655,7 +675,10 @@ export const useStore = create<ApplicationState>((set, get) => ({
     },
 
     redeemPromoCode: async (code: string) => {
-        const { userId } = get();
+        const { userId, remoteConfigs } = get();
+        if (remoteConfigs?.feature_flags?.promo_codes === false) {
+            return { success: false, message: 'Promo code redemptions are temporarily paused by admin.' };
+        }
         if (!userId) throw new Error('Please log in or create an account to redeem promo codes.');
         try {
             const api = await import('../services/api');

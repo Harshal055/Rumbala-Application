@@ -23,6 +23,8 @@ interface PaywallModalProps {
 
 export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallModalProps) {
     const isPro = useStore(state => state.isPro);
+    const remoteConfigs = useStore(state => state.remoteConfigs);
+    const shopEnabled = remoteConfigs?.feature_flags?.shop_enabled ?? true;
     const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
     const [packages, setPackages] = useState<PurchasesPackage[]>([]);
     const [loading, setLoading] = useState(true);
@@ -89,6 +91,10 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
     };
 
     const handleSubscribe = () => {
+        if (!shopEnabled) {
+            showAlert('Store Maintenance', 'In-app purchases and subscriptions are temporarily paused for scheduled maintenance.');
+            return;
+        }
         if (!selectedPackage) return;
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         onSubscribe(selectedPackage);
@@ -186,19 +192,21 @@ export default function PaywallModal({ visible, onClose, onSubscribe }: PaywallM
                             </View>
 
                             <TouchableOpacity 
-                                style={[s.ctaBtn, (!selectedPackage || loading) && { opacity: 0.5 }]} 
+                                style={[s.ctaBtn, (!selectedPackage || loading || !shopEnabled) && { opacity: 0.5 }]} 
                                 onPress={handleSubscribe} 
                                 activeOpacity={0.8}
-                                disabled={!selectedPackage || loading}
+                                disabled={!selectedPackage || loading || !shopEnabled}
                             >
                                 <LinearGradient 
-                                    colors={['#FF8ED4', '#FF66B2']} 
+                                    colors={shopEnabled ? ['#FF8ED4', '#FF66B2'] : ['#555', '#444']} 
                                     start={{ x: 0, y: 0 }} 
                                     end={{ x: 1, y: 0 }}
                                     style={s.ctaGradient}
                                 >
                                     <Text style={s.ctaText}>
-                                        {(selectedPackage as any)?.product?.introPrice ? 'Start Free Trial' : 'Subscribe Now'}
+                                        {!shopEnabled 
+                                            ? 'Purchases Temporarily Paused' 
+                                            : (selectedPackage as any)?.product?.introPrice ? 'Start Free Trial' : 'Subscribe Now'}
                                     </Text>
                                 </LinearGradient>
                             </TouchableOpacity>

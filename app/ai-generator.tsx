@@ -21,8 +21,13 @@ const BG_COLORS = ['#FFF5F5', '#FFF0F5', '#F5F3FF', '#FFF8F0'];
 
 export default function AIDareGeneratorScreen() {
     const router = useRouter();
-    const { partner1, partner2, setActiveCustomCard, showAlert, isPro } = useStore();
+    const { partner1, partner2, setActiveCustomCard, showAlert, isPro, remoteConfigs } = useStore();
 
+    const isSecretCardsEnabled = remoteConfigs?.feature_flags?.secret_cards ?? true;
+    const isSpicyEnabled = remoteConfigs?.feature_flags?.spicy_category ?? true;
+    const isAiModerationEnabled = remoteConfigs?.feature_flags?.ai_moderation !== false;
+
+    const availablePresets = MOOD_PRESETS.filter(m => isSpicyEnabled || m.vibe !== 'spicy');
     const [selectedMood, setSelectedMood] = useState<string>('massage');
     const [intensity, setIntensity] = useState<number>(2);
     const [customScenario, setCustomScenario] = useState<string>('');
@@ -31,7 +36,7 @@ export default function AIDareGeneratorScreen() {
     const [savedToFavs, setSavedToFavs] = useState<boolean>(false);
     const [dareRating, setDareRating] = useState<-1 | 0 | 1>(0);
 
-    const activePreset = MOOD_PRESETS.find(m => m.key === selectedMood) || MOOD_PRESETS[0];
+    const activePreset = availablePresets.find(m => m.key === selectedMood) || availablePresets[0] || MOOD_PRESETS[0];
 
     const handleSelectMood = (preset: MoodPreset) => {
         Haptics.selectionAsync();
@@ -40,6 +45,20 @@ export default function AIDareGeneratorScreen() {
     };
 
     const handleGenerate = async () => {
+        if (!isSecretCardsEnabled) {
+            showAlert('Feature Paused', 'Custom AI dare builder is temporarily paused by admin.');
+            return;
+        }
+
+        if (isAiModerationEnabled && customScenario.trim()) {
+            const prohibited = ['abuse', 'rape', 'kill', 'suicide', 'pedophile', 'child', 'minor', 'exploit', 'murder'];
+            const lower = customScenario.toLowerCase();
+            if (prohibited.some(w => lower.includes(w))) {
+                showAlert('Safety Notice', 'Your custom scenario contains prohibited or harmful language. Please phrase respectfully.');
+                return;
+            }
+        }
+
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setIsGenerating(true);
         setSavedToFavs(false);
@@ -158,6 +177,13 @@ export default function AIDareGeneratorScreen() {
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="handled"
                     >
+                        {!isSecretCardsEnabled && (
+                            <Animated.View entering={FadeInDown.duration(400)} style={{ backgroundColor: 'rgba(255, 107, 53, 0.12)', borderColor: 'rgba(255, 107, 53, 0.35)', borderWidth: 1, borderRadius: 16, padding: 14, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+                                <Ionicons name="alert-circle" size={22} color="#FF6B35" style={{ marginRight: 10 }} />
+                                <Text style={{ flex: 1, fontSize: 13, color: '#333', fontWeight: '500', lineHeight: 18 }}>Custom AI Dare Builder is temporarily paused by admin for scheduled maintenance.</Text>
+                            </Animated.View>
+                        )}
+
                         {/* ── Generated Result Showcase (if exists) ── */}
                         {generatedDare && (
                             <Animated.View entering={FadeInDown.duration(500).springify()} style={styles.resultCardWrap}>
@@ -245,7 +271,7 @@ export default function AIDareGeneratorScreen() {
                         <Animated.View entering={FadeInDown.delay(100).duration(400)} style={styles.section}>
                             <Text style={styles.sectionTitle}>1. CHOOSE MOOD / VIBE</Text>
                             <View style={styles.moodGrid}>
-                                {MOOD_PRESETS.map((preset) => {
+                                {availablePresets.map((preset) => {
                                     const selected = selectedMood === preset.key;
                                     return (
                                         <TouchableOpacity
@@ -333,13 +359,13 @@ export default function AIDareGeneratorScreen() {
                         {/* ── Generate Action Button ── */}
                         <Animated.View entering={FadeInUp.delay(400).duration(400)}>
                             <TouchableOpacity
-                                style={styles.generateBtn}
+                                style={[styles.generateBtn, !isSecretCardsEnabled && { opacity: 0.6 }]}
                                 onPress={handleGenerate}
-                                disabled={isGenerating}
+                                disabled={isGenerating || !isSecretCardsEnabled}
                                 activeOpacity={0.85}
                             >
                                 <LinearGradient
-                                    colors={['#FF6B35', '#EC4899', '#8B5CF6']}
+                                    colors={!isSecretCardsEnabled ? ['#888', '#666', '#555'] : ['#FF6B35', '#EC4899', '#8B5CF6']}
                                     start={{ x: 0, y: 0 }}
                                     end={{ x: 1, y: 0 }}
                                     style={styles.generateGradient}
@@ -348,9 +374,11 @@ export default function AIDareGeneratorScreen() {
                                         <ActivityIndicator color="#FFF" size="small" />
                                     ) : (
                                         <>
-                                            <Ionicons name="sparkles" size={22} color="#FFF" />
+                                            <Ionicons name={!isSecretCardsEnabled ? "pause-circle" : "sparkles"} size={22} color="#FFF" />
                                             <Text style={styles.generateBtnText}>
-                                                {generatedDare ? 'Regenerate Another Dare ✨' : 'Generate AI Dare ✨'}
+                                                {!isSecretCardsEnabled 
+                                                    ? 'Custom Dares Paused by Admin'
+                                                    : generatedDare ? 'Regenerate Another Dare ✨' : 'Generate AI Dare ✨'}
                                             </Text>
                                         </>
                                     )}

@@ -104,15 +104,18 @@ const getNextMonday = () => {
 };
 
 export default function ShopScreen() {
-    const { cardCount, userId, isPro, proExpiresAt, setIsPro, redeemPromoCode, showAlert } = useStore(useShallow(state => ({
+    const { cardCount, userId, isPro, proExpiresAt, setIsPro, redeemPromoCode, showAlert, remoteConfigs } = useStore(useShallow(state => ({
         cardCount: state.cardCount,
         userId: state.userId,
         isPro: state.isPro,
         proExpiresAt: state.proExpiresAt,
         setIsPro: state.setIsPro,
         redeemPromoCode: state.redeemPromoCode,
-        showAlert: state.showAlert
+        showAlert: state.showAlert,
+        remoteConfigs: state.remoteConfigs,
     })));
+    const isShopEnabled = remoteConfigs?.feature_flags?.shop_enabled ?? true;
+    const isPromoEnabled = remoteConfigs?.feature_flags?.promo_codes ?? true;
     const router = useRouter();
     const [loadingSku, setLoadingSku] = useState<string | null>(null);
     const [packages, setPackages] = useState<PurchasesPackage[]>([]);
@@ -212,6 +215,10 @@ export default function ShopScreen() {
     };
 
     const handlePurchase = async (param: string | PurchasesPackage) => {
+        if (!isShopEnabled) {
+            showAlert('Store Maintenance', 'In-app purchases and subscriptions are temporarily paused for scheduled maintenance. Please check back shortly.');
+            return;
+        }
         if (loadingSku) return;
         const productId = rcProductId(param);
 
@@ -294,6 +301,10 @@ export default function ShopScreen() {
     };
 
     const handleRedeemPromo = async () => {
+        if (!isPromoEnabled) {
+            showAlert('Promo Paused', 'Promo code redemptions are temporarily paused by admin.');
+            return;
+        }
         const code = promoInput.trim().toUpperCase();
         if (!code) {
             showAlert('Promo Code', 'Please enter a promo code.');
@@ -367,6 +378,14 @@ export default function ShopScreen() {
                             </View>
                         </View>
                     </Animated.View>
+
+                    {/* Store Maintenance Banner */}
+                    {!isShopEnabled && (
+                        <Animated.View entering={FadeInDown.duration(400)} style={{ backgroundColor: 'rgba(255, 107, 53, 0.12)', borderColor: 'rgba(255, 107, 53, 0.35)', borderWidth: 1, borderRadius: 16, padding: 14, marginHorizontal: 20, marginBottom: 14, flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="alert-circle" size={22} color="#FF6B35" style={{ marginRight: 10 }} />
+                            <Text style={{ flex: 1, fontSize: 13, color: '#333', fontWeight: '500', lineHeight: 18 }}>In-app purchases and subscriptions are temporarily paused for scheduled maintenance.</Text>
+                        </Animated.View>
+                    )}
 
                     {/* Tab Switcher */}
                     <Animated.View entering={FadeInDown.delay(50).duration(500)} style={[styles.tabSwitcher, glassStyles.container]}>
@@ -481,23 +500,27 @@ export default function ShopScreen() {
                     {/* 🎁 Promo Code Banner */}
                     <Animated.View entering={FadeInDown.delay(140).duration(500)} style={styles.promoBannerCard}>
                         <TouchableOpacity
-                            style={[styles.promoBannerBtn, glassStyles.container]}
+                            style={[styles.promoBannerBtn, glassStyles.container, !isPromoEnabled && { opacity: 0.65 }]}
                             activeOpacity={0.85}
                             onPress={() => {
+                                if (!isPromoEnabled) {
+                                    showAlert('Promo Paused', 'Promo code redemptions are temporarily disabled by admin.');
+                                    return;
+                                }
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 setShowPromoModal(true);
                             }}
                         >
                             <View style={styles.promoIconWrap}>
-                                <Ionicons name="gift-outline" size={22} color="#FF6B35" />
+                                <Ionicons name="gift-outline" size={22} color={isPromoEnabled ? "#FF6B35" : "#888"} />
                             </View>
                             <View style={styles.promoTextWrap}>
                                 <Text style={styles.promoTitle}>Have a Promo Code?</Text>
-                                <Text style={styles.promoSubtitle}>Enter your code to unlock Pro days or bonus cards</Text>
+                                <Text style={styles.promoSubtitle}>{isPromoEnabled ? "Enter your code to unlock Pro days or bonus cards" : "Promo redemptions are temporarily paused"}</Text>
                             </View>
-                            <View style={styles.promoActionTag}>
-                                <Text style={styles.promoActionText}>Redeem</Text>
-                                <Ionicons name="chevron-forward" size={14} color="#FF6B35" />
+                            <View style={[styles.promoActionTag, !isPromoEnabled && { backgroundColor: 'rgba(0,0,0,0.05)' }]}>
+                                <Text style={[styles.promoActionText, !isPromoEnabled && { color: '#888' }]}>{isPromoEnabled ? "Redeem" : "Paused"}</Text>
+                                {isPromoEnabled && <Ionicons name="chevron-forward" size={14} color="#FF6B35" />}
                             </View>
                         </TouchableOpacity>
                     </Animated.View>

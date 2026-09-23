@@ -34,7 +34,8 @@ export default function SubscriptionScreen() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { width } = useWindowDimensions();
-    const { setHasSeenSubscription, setIsPro, showAlert, userId } = useStore();
+    const { setHasSeenSubscription, setIsPro, showAlert, userId, remoteConfigs } = useStore();
+    const shopEnabled = remoteConfigs?.feature_flags?.shop_enabled ?? true;
 
     const [selectedPlan, setSelectedPlan] = useState<'monthly' | 'annual'>('annual');
     const [isPurchasing, setIsPurchasing] = useState(false);
@@ -139,6 +140,10 @@ export default function SubscriptionScreen() {
     const handleTrialPressOut = () => { btnScale.value = withSpring(1); };
 
     const handleStartTrial = async () => {
+        if (!shopEnabled) {
+            showAlert('Store Maintenance', 'In-app purchases and subscriptions are temporarily paused for scheduled maintenance. Please check back shortly.');
+            return;
+        }
         const pkg = selectedPlan === 'annual' ? annualPackage : monthlyPackage;
         if (!pkg) {
             showAlert('Store Not Ready', 'Subscription plans are still loading. Please try again in a moment.');

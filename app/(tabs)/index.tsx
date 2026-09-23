@@ -101,7 +101,16 @@ export default function TabHomeScreen() {
         appPurpose: state.appPurpose,
     })));
 
+    const isSpicyEnabled = remoteConfigs?.feature_flags?.spicy_category ?? true;
+    const isSecretCardsEnabled = remoteConfigs?.feature_flags?.secret_cards ?? true;
+
     const [currentCard, setCurrentCard] = useState<DareCard | null>(null);
+
+    useEffect(() => {
+        if (!isSpicyEnabled && selectedVibe === 'spicy') {
+            setSelectedVibe('fun');
+        }
+    }, [isSpicyEnabled, selectedVibe]);
 
     useEffect(() => {
         if (activeCustomCard) {
@@ -502,6 +511,10 @@ export default function TabHomeScreen() {
                         <TouchableOpacity
                             style={[styles.quickFeatureTile, glassStyles.container]}
                             onPress={() => {
+                                if (!isSecretCardsEnabled) {
+                                    showAlert('Feature Paused', 'AI Dare Studio is temporarily paused for scheduled maintenance.');
+                                    return;
+                                }
                                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                                 router.push('/ai-generator');
                             }}
