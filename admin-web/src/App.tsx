@@ -7,14 +7,30 @@ import { Input } from './components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/card';
 import { Flame, ArrowLeft, Loader2 } from 'lucide-react';
 
-// ── Lazy-Loaded Separate Page Chunks ──────────────────────────────────────────
-// Each view is split into its own lightweight bundle that only loads on-demand.
-const LandingPageView = lazy(() =>
-  import('./views/LandingPageView').then((m) => ({ default: m.LandingPageView }))
+// ── Lazy-Loaded Public Web Pages (Separate Bundles) ──────────────────────────
+const LandingHomeView = lazy(() =>
+  import('./views/LandingHomeView').then((m) => ({ default: m.LandingHomeView }))
+);
+const SimulatorPageView = lazy(() =>
+  import('./views/SimulatorPageView').then((m) => ({ default: m.SimulatorPageView }))
+);
+const FeaturesPageView = lazy(() =>
+  import('./views/FeaturesPageView').then((m) => ({ default: m.FeaturesPageView }))
+);
+const ReviewsPageView = lazy(() =>
+  import('./views/ReviewsPageView').then((m) => ({ default: m.ReviewsPageView }))
+);
+const FaqPageView = lazy(() =>
+  import('./views/FaqPageView').then((m) => ({ default: m.FaqPageView }))
+);
+const DownloadPageView = lazy(() =>
+  import('./views/DownloadPageView').then((m) => ({ default: m.DownloadPageView }))
 );
 const LegalPageView = lazy(() =>
   import('./views/LegalPageView').then((m) => ({ default: m.LegalPageView }))
 );
+
+// ── Lazy-Loaded Admin Portal Views (Separate Bundles) ────────────────────────
 const DashboardView = lazy(() =>
   import('./views/DashboardView').then((m) => ({ default: m.DashboardView }))
 );
@@ -45,6 +61,9 @@ const AuditLogsView = lazy(() =>
 const CrashLogsView = lazy(() =>
   import('./views/CrashLogsView').then((m) => ({ default: m.CrashLogsView }))
 );
+const AiDaresView = lazy(() =>
+  import('./views/AiDaresView').then((m) => ({ default: m.AiDaresView }))
+);
 
 const VALID_ADMIN_VIEWS = [
   'dashboard',
@@ -63,7 +82,7 @@ const VALID_ADMIN_VIEWS = [
 type AdminViewType = (typeof VALID_ADMIN_VIEWS)[number];
 
 interface ParsedRoute {
-  mainRoute: string; // '/', '/privacy', '/terms', '/delete-account', '/admin'
+  mainRoute: string;
   adminView: AdminViewType;
 }
 
@@ -75,17 +94,26 @@ function parseCurrentRoute(): ParsedRoute {
   let pathname = window.location.pathname.toLowerCase();
   const hashRaw = window.location.hash.toLowerCase().replace('#', '').replace(/^\/+/, '');
 
-  // Handle hash-based deep linking (e.g., #/privacy, #admin/users)
+  // Handle hash routing if present (e.g. #/simulator, #admin/users)
   if (hashRaw.startsWith('admin')) {
     pathname = '/' + hashRaw;
-  } else if (hashRaw === 'privacy' || hashRaw === 'terms' || hashRaw === 'delete-account') {
+  } else if (
+    ['simulator', 'features', 'reviews', 'faq', 'download', 'privacy', 'terms', 'delete-account'].includes(hashRaw)
+  ) {
     pathname = '/' + hashRaw;
   }
 
+  // Public standalone page routes
+  if (pathname === '/simulator') return { mainRoute: '/simulator', adminView: 'dashboard' };
+  if (pathname === '/features') return { mainRoute: '/features', adminView: 'dashboard' };
+  if (pathname === '/reviews') return { mainRoute: '/reviews', adminView: 'dashboard' };
+  if (pathname === '/faq') return { mainRoute: '/faq', adminView: 'dashboard' };
+  if (pathname === '/download') return { mainRoute: '/download', adminView: 'dashboard' };
   if (pathname === '/privacy') return { mainRoute: '/privacy', adminView: 'dashboard' };
   if (pathname === '/terms') return { mainRoute: '/terms', adminView: 'dashboard' };
   if (pathname === '/delete-account') return { mainRoute: '/delete-account', adminView: 'dashboard' };
 
+  // Admin routes
   if (pathname.startsWith('/admin')) {
     const subPath = pathname.replace('/admin', '').replace(/^\/+/, '');
     const firstSegment = subPath.split('/')[0] as AdminViewType;
@@ -98,7 +126,7 @@ function parseCurrentRoute(): ParsedRoute {
 
 function ViewSuspenseLoader({ label = 'Loading page...' }: { label?: string }) {
   return (
-    <div className="flex flex-col items-center justify-center p-16 space-y-3 min-h-[350px]">
+    <div className="min-h-screen bg-[#0B0D14] flex flex-col items-center justify-center p-16 space-y-3">
       <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center animate-pulse">
         <Flame className="w-6 h-6 text-primary" />
       </div>
@@ -124,7 +152,7 @@ export function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Sync route on browser navigation (Back, Forward, hashchange)
+  // Sync route on popstate and hashchange
   useEffect(() => {
     const handlePopState = () => {
       const parsed = parseCurrentRoute();
@@ -144,6 +172,7 @@ export function App() {
     setRoute(targetRoute);
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', targetRoute);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
@@ -268,7 +297,42 @@ export function App() {
     );
   }
 
-  // 1. Legal Compliance Pages (Separate Routes)
+  // ── 1. Standalone Public Web Pages ──────────────────────────────────────────
+  if (route === '/simulator') {
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Dare Simulator..." />}>
+        <SimulatorPageView onNavigate={navigate} />
+      </Suspense>
+    );
+  }
+  if (route === '/features') {
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading App Features..." />}>
+        <FeaturesPageView onNavigate={navigate} />
+      </Suspense>
+    );
+  }
+  if (route === '/reviews') {
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Couples Reviews..." />}>
+        <ReviewsPageView onNavigate={navigate} />
+      </Suspense>
+    );
+  }
+  if (route === '/faq') {
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading FAQ..." />}>
+        <FaqPageView onNavigate={navigate} />
+      </Suspense>
+    );
+  }
+  if (route === '/download') {
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Download Center..." />}>
+        <DownloadPageView onNavigate={navigate} />
+      </Suspense>
+    );
+  }
   if (route === '/privacy') {
     return (
       <Suspense fallback={<ViewSuspenseLoader label="Loading Privacy Policy..." />}>
@@ -290,17 +354,15 @@ export function App() {
       </Suspense>
     );
   }
-
-  // 2. Public Marketing Landing Page (Default for root URL)
   if (route === '/' && (!session || !isAdmin)) {
     return (
       <Suspense fallback={<ViewSuspenseLoader label="Loading Rumbala Experience..." />}>
-        <LandingPageView onNavigate={navigate} />
+        <LandingHomeView onNavigate={navigate} />
       </Suspense>
     );
   }
 
-  // 3. Admin Authentication Portal (if navigated to /admin and not logged in)
+  // ── 2. Admin Authentication Portal ──────────────────────────────────────────
   if (!session || !isAdmin) {
     return (
       <div className="min-h-screen bg-[#0B0D14] flex items-center justify-center p-4 relative overflow-hidden">
@@ -415,7 +477,7 @@ export function App() {
     );
   }
 
-  // 4. Authenticated Admin Dashboard with Separate Deep-Link Routes
+  // ── 3. Authenticated Admin Dashboard with Separate Deep-Link Routes ─────────
   return (
     <div className="min-h-screen bg-[#0B0D14] flex">
       {/* Navigation Sidebar */}
