@@ -999,7 +999,7 @@ export default function LdrScreen() {
     if (roomId && isValidatingRoom && !isRoomValidated) {
         return (
             <AnimatedBackground colors={BG_COLORS}>
-                <SafeAreaView edges={['top']} style={styles.setupRoot}>
+                <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={styles.setupRoot}>
                     <StatusBar barStyle="dark-content" />
                     <View style={[styles.reconnectCard, glassStyles.container]}>
                         <ActivityIndicator size="large" color="#FF6B35" />
@@ -1017,7 +1017,7 @@ export default function LdrScreen() {
     if (!roomId) {
         return (
             <AnimatedBackground colors={BG_COLORS}>
-                <SafeAreaView style={styles.setupRoot} edges={['top']}>
+                <SafeAreaView style={styles.setupRoot} edges={['top', 'left', 'right']}>
                     <StatusBar barStyle="dark-content" />
                     <Animated.View entering={FadeInDown.duration(500)} style={[styles.navBar, glassStyles.header]}>
                         <TouchableOpacity
@@ -1203,7 +1203,7 @@ export default function LdrScreen() {
             <View style={styles.waitRoot}>
                 <StatusBar barStyle="light-content" />
                 <LinearGradient colors={['#1a1035', '#2D1B69', '#4A2C8A']} style={StyleSheet.absoluteFill} />
-                <SafeAreaView edges={['top']} style={{ flex: 1 }}>
+                <SafeAreaView edges={['top', 'left', 'right', 'bottom']} style={{ flex: 1 }}>
                     <View style={styles.navBar}>
                             <TouchableOpacity onPress={() => leaveRoom()} style={styles.backBtn}>
                             <Ionicons name="close-outline" size={28} color="#fff" />

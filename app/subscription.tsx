@@ -224,7 +224,7 @@ export default function SubscriptionScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
                 <StatusBar barStyle="light-content" />
                 
                 {/* Header */}

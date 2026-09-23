@@ -350,7 +350,7 @@ export default function ShopScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
 
                 <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>

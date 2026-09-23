@@ -31,7 +31,7 @@ export default function VerificationScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
                 <Animated.View entering={FadeInDown.duration(500)} style={[styles.header, glassStyles.header]}>
                     <TouchableOpacity onPress={handleBack} style={[styles.backBtn, glassStyles.container]}>

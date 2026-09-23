@@ -165,7 +165,7 @@ export default function FavoritesScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.root} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.root} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
 
                 {/* ── Header ── */}

@@ -362,7 +362,7 @@ export default function SettingsScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
                 <ScrollView
                     style={styles.scrollView}

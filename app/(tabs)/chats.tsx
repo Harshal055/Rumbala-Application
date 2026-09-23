@@ -145,7 +145,7 @@ export default function ChatsScreen() {
 
     return (
         <AnimatedBackground colors={BG_COLORS}>
-            <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
 
                 {/* Header */}

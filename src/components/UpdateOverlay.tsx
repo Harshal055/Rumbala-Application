@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, Linking, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Application from 'expo-application';
 import { useStore } from '../store/useStore';
 import { Ionicons } from '@expo/vector-icons';
@@ -71,29 +72,31 @@ export default function UpdateOverlay() {
                     colors={['rgba(26, 11, 46, 0.96)', 'rgba(15, 5, 29, 0.96)']}
                     style={StyleSheet.absoluteFill}
                 />
-                <View style={styles.card}>
-                    <View style={styles.iconWrap}>
-                        <Ionicons name="rocket-outline" size={44} color="#FF6B35" />
-                    </View>
+                <SafeAreaView style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', padding: 24 }} edges={['top', 'left', 'right', 'bottom']}>
+                    <View style={styles.card}>
+                        <View style={styles.iconWrap}>
+                            <Ionicons name="rocket-outline" size={44} color="#FF6B35" />
+                        </View>
 
-                    <Text style={styles.title}>{title} 🚀</Text>
-                    <Text style={styles.message}>{message}</Text>
+                        <Text style={styles.title}>{title} 🚀</Text>
+                        <Text style={styles.message}>{message}</Text>
 
-                    <TouchableOpacity
-                        style={styles.updateBtn}
-                        onPress={() => openStore(appUpdate?.android_url, appUpdate?.ios_url)}
-                        activeOpacity={0.85}
-                    >
-                        <Ionicons name="cloud-download-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.updateText}>Update Now</Text>
-                    </TouchableOpacity>
-
-                    {needsSoft && (
-                        <TouchableOpacity style={styles.laterBtn} onPress={() => setDismissed(true)} activeOpacity={0.7}>
-                            <Text style={styles.laterText}>Maybe Later</Text>
+                        <TouchableOpacity
+                            style={styles.updateBtn}
+                            onPress={() => openStore(appUpdate?.android_url, appUpdate?.ios_url)}
+                            activeOpacity={0.85}
+                        >
+                            <Ionicons name="cloud-download-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                            <Text style={styles.updateText}>Update Now</Text>
                         </TouchableOpacity>
-                    )}
-                </View>
+
+                        {needsSoft && (
+                            <TouchableOpacity style={styles.laterBtn} onPress={() => setDismissed(true)} activeOpacity={0.7}>
+                                <Text style={styles.laterText}>Maybe Later</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </SafeAreaView>
             </View>
         </Modal>
     );

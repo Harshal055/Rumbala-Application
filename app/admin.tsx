@@ -429,7 +429,7 @@ export default function AdminScreen() {
     if (!isLoggedIn) {
         return (
             <AnimatedBackground colors={['#0F172A', '#1E293B', '#334155']}>
-                <SafeAreaView style={styles.loginContainer}>
+                <SafeAreaView style={styles.loginContainer} edges={['top', 'left', 'right', 'bottom']}>
                     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'center' }}>
                         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                             <Animated.View entering={FadeInDown.duration(600)} style={[styles.loginCard, glassStyles.container]}>
@@ -459,7 +459,7 @@ export default function AdminScreen() {
 
     return (
         <AnimatedBackground colors={['#F8FAFC', '#F1F5F9', '#E2E8F0']}>
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar barStyle="dark-content" />
                 <View style={[styles.header, glassStyles.header]}>
                     <TouchableOpacity
