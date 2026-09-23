@@ -1,42 +1,122 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { supabase } from './lib/supabase';
 import { Sidebar } from './components/Sidebar';
 import { Navbar } from './components/Navbar';
-import { DashboardView } from './views/DashboardView';
-import { RevenueView } from './views/RevenueView';
-import { LdrRoomsView } from './views/LdrRoomsView';
-import { FeatureFlagsView } from './views/FeatureFlagsView';
-import { CardsCmsView } from './views/CardsCmsView';
-import { UsersView } from './views/UsersView';
-import { PromoCodesView } from './views/PromoCodesView';
-import { SupportView } from './views/SupportView';
-import { AuditLogsView } from './views/AuditLogsView';
-import { CrashLogsView } from './views/CrashLogsView';
-import { AiDaresView } from './views/AiDaresView';
-import { LandingPageView } from './views/LandingPageView';
-import { LegalPageView } from './views/LegalPageView';
 import { Button } from './components/ui/button';
 import { Input } from './components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from './components/ui/card';
-import { Flame, ArrowLeft } from 'lucide-react';
+import { Flame, ArrowLeft, Loader2 } from 'lucide-react';
 
-function getInitialRoute(): string {
-  if (typeof window === 'undefined') return '/';
-  const path = window.location.pathname.toLowerCase();
-  const hash = window.location.hash.toLowerCase().replace('#', '');
-  if (path === '/privacy' || hash === 'privacy') return '/privacy';
-  if (path === '/terms' || hash === 'terms') return '/terms';
-  if (path === '/delete-account' || hash === 'delete-account') return '/delete-account';
-  if (path === '/admin' || hash === 'admin') return '/admin';
-  return '/';
+// ── Lazy-Loaded Separate Page Chunks ──────────────────────────────────────────
+// Each view is split into its own lightweight bundle that only loads on-demand.
+const LandingPageView = lazy(() =>
+  import('./views/LandingPageView').then((m) => ({ default: m.LandingPageView }))
+);
+const LegalPageView = lazy(() =>
+  import('./views/LegalPageView').then((m) => ({ default: m.LegalPageView }))
+);
+const DashboardView = lazy(() =>
+  import('./views/DashboardView').then((m) => ({ default: m.DashboardView }))
+);
+const RevenueView = lazy(() =>
+  import('./views/RevenueView').then((m) => ({ default: m.RevenueView }))
+);
+const LdrRoomsView = lazy(() =>
+  import('./views/LdrRoomsView').then((m) => ({ default: m.LdrRoomsView }))
+);
+const FeatureFlagsView = lazy(() =>
+  import('./views/FeatureFlagsView').then((m) => ({ default: m.FeatureFlagsView }))
+);
+const CardsCmsView = lazy(() =>
+  import('./views/CardsCmsView').then((m) => ({ default: m.CardsCmsView }))
+);
+const UsersView = lazy(() =>
+  import('./views/UsersView').then((m) => ({ default: m.UsersView }))
+);
+const PromoCodesView = lazy(() =>
+  import('./views/PromoCodesView').then((m) => ({ default: m.PromoCodesView }))
+);
+const SupportView = lazy(() =>
+  import('./views/SupportView').then((m) => ({ default: m.SupportView }))
+);
+const AuditLogsView = lazy(() =>
+  import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView }))
+);
+const CrashLogsView = lazy(() =>
+  import('./views/CrashLogsView').then((m) => ({ default: m.CrashLogsView }))
+);
+
+const VALID_ADMIN_VIEWS = [
+  'dashboard',
+  'revenue',
+  'users',
+  'ai-dares',
+  'ldr',
+  'features',
+  'crashes',
+  'cards',
+  'promos',
+  'support',
+  'audit',
+] as const;
+
+type AdminViewType = (typeof VALID_ADMIN_VIEWS)[number];
+
+interface ParsedRoute {
+  mainRoute: string; // '/', '/privacy', '/terms', '/delete-account', '/admin'
+  adminView: AdminViewType;
+}
+
+function parseCurrentRoute(): ParsedRoute {
+  if (typeof window === 'undefined') {
+    return { mainRoute: '/', adminView: 'dashboard' };
+  }
+
+  let pathname = window.location.pathname.toLowerCase();
+  const hashRaw = window.location.hash.toLowerCase().replace('#', '').replace(/^\/+/, '');
+
+  // Handle hash-based deep linking (e.g., #/privacy, #admin/users)
+  if (hashRaw.startsWith('admin')) {
+    pathname = '/' + hashRaw;
+  } else if (hashRaw === 'privacy' || hashRaw === 'terms' || hashRaw === 'delete-account') {
+    pathname = '/' + hashRaw;
+  }
+
+  if (pathname === '/privacy') return { mainRoute: '/privacy', adminView: 'dashboard' };
+  if (pathname === '/terms') return { mainRoute: '/terms', adminView: 'dashboard' };
+  if (pathname === '/delete-account') return { mainRoute: '/delete-account', adminView: 'dashboard' };
+
+  if (pathname.startsWith('/admin')) {
+    const subPath = pathname.replace('/admin', '').replace(/^\/+/, '');
+    const firstSegment = subPath.split('/')[0] as AdminViewType;
+    const view = VALID_ADMIN_VIEWS.includes(firstSegment) ? firstSegment : 'dashboard';
+    return { mainRoute: '/admin', adminView: view };
+  }
+
+  return { mainRoute: '/', adminView: 'dashboard' };
+}
+
+function ViewSuspenseLoader({ label = 'Loading page...' }: { label?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center p-16 space-y-3 min-h-[350px]">
+      <div className="w-12 h-12 rounded-2xl bg-primary/20 border border-primary/40 flex items-center justify-center animate-pulse">
+        <Flame className="w-6 h-6 text-primary" />
+      </div>
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+        <span>{label}</span>
+      </div>
+    </div>
+  );
 }
 
 export function App() {
-  const [route, setRoute] = useState<string>(getInitialRoute());
+  const initialRoute = parseCurrentRoute();
+  const [route, setRoute] = useState<string>(initialRoute.mainRoute);
+  const [currentView, setCurrentView] = useState<AdminViewType>(initialRoute.adminView);
   const [session, setSession] = useState<any>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentView, setCurrentView] = useState<string>('dashboard');
 
   // Auth Form State
   const [email, setEmail] = useState('adminhr@andx.com');
@@ -44,11 +124,14 @@ export function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
-  // Sync route on popstate / hashchange
+  // Sync route on browser navigation (Back, Forward, hashchange)
   useEffect(() => {
     const handlePopState = () => {
-      setRoute(getInitialRoute());
+      const parsed = parseCurrentRoute();
+      setRoute(parsed.mainRoute);
+      setCurrentView(parsed.adminView);
     };
+
     window.addEventListener('popstate', handlePopState);
     window.addEventListener('hashchange', handlePopState);
     return () => {
@@ -61,6 +144,17 @@ export function App() {
     setRoute(targetRoute);
     if (typeof window !== 'undefined') {
       window.history.pushState({}, '', targetRoute);
+    }
+  };
+
+  const handleSelectAdminView = (view: string) => {
+    const safeView = VALID_ADMIN_VIEWS.includes(view as AdminViewType)
+      ? (view as AdminViewType)
+      : 'dashboard';
+    setCurrentView(safeView);
+    const targetUrl = safeView === 'dashboard' ? '/admin' : `/admin/${safeView}`;
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', targetUrl);
     }
   };
 
@@ -146,8 +240,8 @@ export function App() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: window.location.origin
-        }
+          redirectTo: window.location.origin,
+        },
       });
       if (error) throw error;
     } catch (err: any) {
@@ -160,6 +254,7 @@ export function App() {
     await supabase.auth.signOut();
     setSession(null);
     setIsAdmin(false);
+    navigate('/');
   };
 
   if (loading) {
@@ -173,23 +268,39 @@ export function App() {
     );
   }
 
-  // 1. Legal Compliance Pages (Accessible to everyone)
+  // 1. Legal Compliance Pages (Separate Routes)
   if (route === '/privacy') {
-    return <LegalPageView page="privacy" onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Privacy Policy..." />}>
+        <LegalPageView page="privacy" onNavigate={navigate} />
+      </Suspense>
+    );
   }
   if (route === '/terms') {
-    return <LegalPageView page="terms" onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Terms of Service..." />}>
+        <LegalPageView page="terms" onNavigate={navigate} />
+      </Suspense>
+    );
   }
   if (route === '/delete-account') {
-    return <LegalPageView page="delete-account" onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Account Deletion Portal..." />}>
+        <LegalPageView page="delete-account" onNavigate={navigate} />
+      </Suspense>
+    );
   }
 
-  // 2. Public Landing Page (Default for root URL)
+  // 2. Public Marketing Landing Page (Default for root URL)
   if (route === '/' && (!session || !isAdmin)) {
-    return <LandingPageView onNavigate={navigate} />;
+    return (
+      <Suspense fallback={<ViewSuspenseLoader label="Loading Rumbala Experience..." />}>
+        <LandingPageView onNavigate={navigate} />
+      </Suspense>
+    );
   }
 
-  // 3. Admin Authentication Portal (if user navigated to /admin and not logged in)
+  // 3. Admin Authentication Portal (if navigated to /admin and not logged in)
   if (!session || !isAdmin) {
     return (
       <div className="min-h-screen bg-[#0B0D14] flex items-center justify-center p-4 relative overflow-hidden">
@@ -304,13 +415,13 @@ export function App() {
     );
   }
 
-  // 4. Authenticated Admin Dashboard
+  // 4. Authenticated Admin Dashboard with Separate Deep-Link Routes
   return (
     <div className="min-h-screen bg-[#0B0D14] flex">
       {/* Navigation Sidebar */}
       <Sidebar
         currentView={currentView}
-        onSelectView={setCurrentView}
+        onSelectView={handleSelectAdminView}
         onLogout={handleSignOut}
       />
 
@@ -319,17 +430,19 @@ export function App() {
         <Navbar userEmail={session.user.email} />
 
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
-          {currentView === 'dashboard' && <DashboardView onNavigate={setCurrentView} />}
-          {currentView === 'revenue' && <RevenueView />}
-          {currentView === 'users' && <UsersView />}
-          {currentView === 'ai-dares' && <AiDaresView />}
-          {currentView === 'ldr' && <LdrRoomsView />}
-          {currentView === 'features' && <FeatureFlagsView />}
-          {currentView === 'crashes' && <CrashLogsView />}
-          {currentView === 'cards' && <CardsCmsView />}
-          {currentView === 'promos' && <PromoCodesView />}
-          {currentView === 'support' && <SupportView />}
-          {currentView === 'audit' && <AuditLogsView />}
+          <Suspense fallback={<ViewSuspenseLoader label={`Loading ${currentView}...`} />}>
+            {currentView === 'dashboard' && <DashboardView onNavigate={handleSelectAdminView} />}
+            {currentView === 'revenue' && <RevenueView />}
+            {currentView === 'users' && <UsersView />}
+            {currentView === 'ai-dares' && <AiDaresView />}
+            {currentView === 'ldr' && <LdrRoomsView />}
+            {currentView === 'features' && <FeatureFlagsView />}
+            {currentView === 'crashes' && <CrashLogsView />}
+            {currentView === 'cards' && <CardsCmsView />}
+            {currentView === 'promos' && <PromoCodesView />}
+            {currentView === 'support' && <SupportView />}
+            {currentView === 'audit' && <AuditLogsView />}
+          </Suspense>
         </main>
       </div>
     </div>
