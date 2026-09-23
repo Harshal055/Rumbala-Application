@@ -30,6 +30,21 @@ export default function LoginScreen() {
     const [showPassword, setShowPassword] = useState(false);
 
     React.useEffect(() => {
+        const state = useStore.getState();
+        if (state.isAuthenticated && state.userId) {
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
+            } else {
+                router.replace('/(tabs)');
+            }
+        }
+    }, []);
+
+    React.useEffect(() => {
         if (params?.prefillEmail) {
             setEmail(params.prefillEmail);
         }
@@ -88,10 +103,12 @@ export default function LoginScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
-                router.replace('/onboarding');
-            } else if (!state.partner1) {
-                router.replace('/welcome');
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {
@@ -125,10 +142,12 @@ export default function LoginScreen() {
             
             // Store is already updated by postAuthSync inside loginV2
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
-                router.replace('/onboarding');
-            } else if (!state.partner1) {
-                router.replace('/welcome');
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {

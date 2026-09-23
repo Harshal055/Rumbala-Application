@@ -204,11 +204,7 @@ export default function SubscriptionScreen() {
 
     const handleSkip = () => {
         setHasSeenSubscription(true);
-        if (router.canGoBack()) {
-            router.back();
-        } else {
-            router.replace('/(tabs)');
-        }
+        router.replace('/(tabs)');
     };
 
 

@@ -11,6 +11,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown, FadeInUp } from 'react-native-reanimated';
 import AnimatedBackground from '../src/components/AnimatedBackground';
 import { glassStyles } from '../src/constants/glass';
+import { useStore } from '../src/store/useStore';
 
 const { width } = Dimensions.get('window');
 
@@ -21,6 +22,17 @@ export default function IntroScreen() {
     const [activeIndex, setActiveIndex] = useState(0);
     const scrollRef = useRef<ScrollView>(null);
     const TOTAL_SLIDES = 2;
+
+    React.useEffect(() => {
+        const state = useStore.getState();
+        if (state.isAuthenticated && state.userId) {
+            if (!state.partner1) {
+                router.replace('/welcome');
+            } else {
+                router.replace('/(tabs)');
+            }
+        }
+    }, []);
 
     const scrollToSlide = (index: number) => {
         scrollRef.current?.scrollTo({ x: index * width, animated: true });

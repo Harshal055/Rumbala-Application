@@ -304,31 +304,50 @@ export const useStore = create<ApplicationState>((set, get) => ({
     userId: null,
     userEmail: null,
     login: (userId, email) => {
-        set({ isAuthenticated: true, userId, userEmail: email });
+        set({ isAuthenticated: true, userId, userEmail: email, isAuthChecked: true });
+        const items: [string, string][] = [
+            ['@Rumbala_auth', 'true']
+        ];
+        if (userId) items.push(['@Rumbala_userId', userId]);
+        if (email) items.push(['@Rumbala_userEmail', email]);
+        AsyncStorage.multiSet(items).catch(console.warn);
         if (userId) {
-            AsyncStorage.setItem('@Rumbala_userId', userId);
             get().syncWithSupabase();
             get().setupRealtimeListeners();
         }
-        if (email) AsyncStorage.setItem('@Rumbala_userEmail', email);
-        AsyncStorage.setItem('@Rumbala_auth', 'true');
     },
     logout: () => {
         get().cleanupRealtimeListeners();
-        set({ isAuthenticated: false, userId: null, userEmail: null, cardCount: 0 });
-        AsyncStorage.setItem('@Rumbala_auth', 'false');
-        AsyncStorage.setItem('@Rumbala_userId', '');
-        AsyncStorage.setItem('@Rumbala_userEmail', '');
+        set({ 
+            isAuthenticated: false, 
+            userId: null, 
+            userEmail: null, 
+            cardCount: 0,
+            partner1: null,
+            partner2: null,
+            partnerEmail: null,
+            isAuthChecked: true,
+        });
+        AsyncStorage.multiSet([
+            ['@Rumbala_auth', 'false'],
+            ['@Rumbala_userId', ''],
+            ['@Rumbala_userEmail', '']
+        ]).catch(console.warn);
         import('../services/api').then(api => api.logoutV2()).catch(console.warn);
     },
     setUserId: (id) => {
-        set({ userId: id, isAuthenticated: !!id });
+        const isAuth = !!id;
+        set({ userId: id, isAuthenticated: isAuth, isAuthChecked: true });
         if (id) {
-            AsyncStorage.setItem('@Rumbala_userId', id);
-            AsyncStorage.setItem('@Rumbala_auth', 'true');
+            AsyncStorage.multiSet([
+                ['@Rumbala_userId', id],
+                ['@Rumbala_auth', 'true']
+            ]).catch(console.warn);
         } else {
-            AsyncStorage.setItem('@Rumbala_userId', '');
-            AsyncStorage.setItem('@Rumbala_auth', 'false');
+            AsyncStorage.multiSet([
+                ['@Rumbala_userId', ''],
+                ['@Rumbala_auth', 'false']
+            ]).catch(console.warn);
         }
     },
     setUserEmail: (email) => {
@@ -1180,7 +1199,7 @@ syncWithSupabase: async () => {
             set({
                 userId: cachedUid,
                 userEmail: cachedEmail,
-                isAuthenticated: isCachedAuth,
+                isAuthenticated: isCachedAuth && Boolean(cachedUid),
                 isAuthChecked: true,
                 hasHydrated: true,
             });
@@ -1189,7 +1208,17 @@ syncWithSupabase: async () => {
             (async () => {
                 try {
                     const { supabase } = await import('../services/supabase');
-                    const { data: { session } } = await supabase.auth.getSession();
+                    let { data: { session } } = await supabase.auth.getSession();
+
+                    // If cached auth exists but Supabase session is missing/expired, attempt session refresh
+                    if (!session && isCachedAuth && cachedUid) {
+                        try {
+                            const refreshRes = await supabase.auth.refreshSession();
+                            if (refreshRes?.data?.session) {
+                                session = refreshRes.data.session;
+                            }
+                        } catch {}
+                    }
 
                     if (session?.user?.user_metadata) {
                         const meta = session.user.user_metadata;
@@ -1199,15 +1228,15 @@ syncWithSupabase: async () => {
                         
                         if (!currentGender && meta.gender) {
                             set({ gender: meta.gender });
-                            AsyncStorage.setItem('@Rumbala_gender', meta.gender);
+                            AsyncStorage.setItem('@Rumbala_gender', meta.gender).catch(() => {});
                         }
                         if (!currentRel && meta.relationship_status) {
                             set({ relationshipStatus: meta.relationship_status });
-                            AsyncStorage.setItem('@Rumbala_relationship_status', meta.relationship_status);
+                            AsyncStorage.setItem('@Rumbala_relationship_status', meta.relationship_status).catch(() => {});
                         }
                         if (!currentPurpose && meta.app_purpose) {
                             set({ appPurpose: meta.app_purpose });
-                            AsyncStorage.setItem('@Rumbala_app_purpose', meta.app_purpose);
+                            AsyncStorage.setItem('@Rumbala_app_purpose', meta.app_purpose).catch(() => {});
                         }
                     }
 
@@ -1223,14 +1252,20 @@ syncWithSupabase: async () => {
                         const uid = session.user.id;
                         const email = session.user.email || null;
                         set({ userId: uid, userEmail: email, isAuthenticated: true, isAuthChecked: true });
-                        AsyncStorage.setItem('@Rumbala_userId', uid).catch(() => {});
-                        if (email) AsyncStorage.setItem('@Rumbala_userEmail', email).catch(() => {});
-                        AsyncStorage.setItem('@Rumbala_auth', 'true').catch(() => {});
+                        AsyncStorage.multiSet([
+                            ['@Rumbala_userId', uid],
+                            ['@Rumbala_userEmail', email || ''],
+                            ['@Rumbala_auth', 'true'],
+                        ]).catch(() => {});
                         get().syncWithSupabase().catch(() => {});
                         get().setupRealtimeListeners();
-                    } else if (!isCachedAuth) {
+                    } else if (!isCachedAuth || !cachedUid) {
                         set({ isAuthChecked: true, isAuthenticated: false, userId: null, userEmail: null });
-                        AsyncStorage.setItem('@Rumbala_auth', 'false').catch(() => {});
+                        AsyncStorage.multiSet([
+                            ['@Rumbala_auth', 'false'],
+                            ['@Rumbala_userId', ''],
+                            ['@Rumbala_userEmail', ''],
+                        ]).catch(() => {});
                     }
                 } catch (e) {
                     if (__DEV__) console.warn('[Hydrate Background Sync] Error:', e);

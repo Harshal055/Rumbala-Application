@@ -40,6 +40,22 @@ export default function SignupScreen() {
     const [otp, setOtp] = useState('');
     const [resendCooldown, setResendCooldown] = useState(0);
 
+    // If user is already authenticated, forward them immediately
+    React.useEffect(() => {
+        const state = useStore.getState();
+        if (state.isAuthenticated && state.userId) {
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
+            } else {
+                router.replace('/(tabs)');
+            }
+        }
+    }, []);
+
     // If redirected with verifyEmail, auto-open OTP verification mode
     React.useEffect(() => {
         if (params?.verifyEmail) {
@@ -111,10 +127,12 @@ export default function SignupScreen() {
             await postAuthSync(userId);
 
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
-                router.replace('/onboarding');
-            } else if (!state.partner1) {
-                router.replace('/welcome');
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
             } else if (state.isPro || state.hasSeenSubscription) {
                 router.replace('/(tabs)');
             } else {
@@ -161,10 +179,14 @@ export default function SignupScreen() {
                     setPartners(fullName.trim(), '');
                 }
                 const state = useStore.getState();
-                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
-                    router.replace('/onboarding');
-                } else if (!state.partner1) {
-                    router.replace('/welcome');
+                if (!state.partner1) {
+                    if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                        router.replace('/onboarding');
+                    } else {
+                        router.replace('/welcome');
+                    }
+                } else if (state.isPro || state.hasSeenSubscription) {
+                    router.replace('/(tabs)');
                 } else {
                     router.replace('/subscription');
                 }
@@ -211,10 +233,14 @@ export default function SignupScreen() {
             showAlert('Account Verified! 🎉', 'Welcome to Rumbala!');
 
             const state = useStore.getState();
-            if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
-                router.replace('/onboarding');
-            } else if (!state.partner1) {
-                router.replace('/welcome');
+            if (!state.partner1) {
+                if (!state.gender || !state.relationshipStatus || !state.appPurpose) {
+                    router.replace('/onboarding');
+                } else {
+                    router.replace('/welcome');
+                }
+            } else if (state.isPro || state.hasSeenSubscription) {
+                router.replace('/(tabs)');
             } else {
                 router.replace('/subscription');
             }
