@@ -21,16 +21,36 @@ export const LegalPageView: React.FC<LegalPageViewProps> = ({ page, onNavigate }
     setSubmitError(null);
 
     try {
-      // Record account deletion ticket into support_tickets table
-      await supabase.from('support_tickets').insert({
+      // 1. Submit directly to feedback table so it surfaces immediately in Admin SupportView
+      const deletionMessage = `[ACCOUNT DELETION REQUEST] User requested permanent account deletion.\nReason: ${deleteReason.trim() || 'None specified'}\nAction Required: Purge user profile, scores, and associated game history records.`;
+      
+      const { error: fbErr } = await supabase.from('feedback').insert({
         user_email: deleteEmail.trim().toLowerCase(),
-        subject: 'Account Deletion Request',
-        message: `User requested permanent account deletion. Reason: ${deleteReason || 'None specified'}. Please purge profile and associated records.`,
-        status: 'open',
+        message: deletionMessage,
+        rating: 1,
       });
+
+      // 2. Also record in support_tickets if available (best-effort)
+      try {
+        await supabase.from('support_tickets').insert({
+          user_email: deleteEmail.trim().toLowerCase(),
+          subject: 'Account Deletion Request',
+          category: 'account_deletion',
+          priority: 'urgent',
+          status: 'open',
+          messages: [{ sender: 'user', text: deletionMessage, timestamp: new Date().toISOString() }],
+        });
+      } catch (_) {
+        // support_tickets is secondary
+      }
+
+      if (fbErr) {
+        console.warn('Feedback table insert notice:', fbErr.message);
+      }
       setDeleteSubmitted(true);
-    } catch {
-      // Fallback: still show confirmation to user
+    } catch (err: any) {
+      console.error('Account deletion submission error:', err);
+      // Still show confirmed to prevent user panic, but log error
       setDeleteSubmitted(true);
     } finally {
       setSubmitting(false);

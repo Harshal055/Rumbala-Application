@@ -15,7 +15,8 @@ import {
   Clock, 
   ExternalLink,
   Zap,
-  HeartHandshake
+  HeartHandshake,
+  ArrowRight
 } from 'lucide-react';
 
 interface MetricStats {
@@ -56,7 +57,7 @@ export const DashboardView: React.FC<{ onNavigate: (view: string) => void }> = (
 
       // 2. Active LDR Rooms
       const { data: roomsData, count: roomCount } = await supabase
-        .from('ldr_rooms')
+        .from('rooms')
         .select('*', { count: 'exact' })
         .eq('is_active', true)
         .order('created_at', { ascending: false })
@@ -241,8 +242,8 @@ export const DashboardView: React.FC<{ onNavigate: (view: string) => void }> = (
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/[0.04]">
-                    {activeRoomsList.map((room) => (
-                      <tr key={room.id} className="hover:bg-white/[0.02]">
+                    {activeRoomsList.map((room, idx) => (
+                      <tr key={room.code || room.id || idx} className="hover:bg-white/[0.02]">
                         <td className="p-3 font-mono font-bold text-orange-400">{room.code}</td>
                         <td className="p-3 text-slate-200">{room.host_name || 'Anonymous Host'}</td>
                         <td className="p-3 text-slate-400">{room.guest_name || 'Waiting for partner...'}</td>
@@ -273,7 +274,9 @@ export const DashboardView: React.FC<{ onNavigate: (view: string) => void }> = (
           </CardHeader>
           <CardContent className="space-y-4">
             {Object.keys(stats.cardsByCategory).length === 0 ? (
-              <p className="text-slate-500 text-sm">Loading card stats...</p>
+              <p className="text-slate-500 text-sm">
+                {loading ? 'Loading card stats...' : 'No card categories registered yet.'}
+              </p>
             ) : (
               Object.entries(stats.cardsByCategory).map(([cat, count]) => (
                 <div key={cat} className="flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/[0.05]">
@@ -285,6 +288,62 @@ export const DashboardView: React.FC<{ onNavigate: (view: string) => void }> = (
           </CardContent>
         </Card>
       </div>
+
+      {/* Recent Security & Audit Activity */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+              <CardTitle>Recent Admin Audit Activity</CardTitle>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate('audit')}
+              className="text-xs"
+            >
+              <span>View Full Ledger</span>
+              <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            </Button>
+          </div>
+          <CardDescription>
+            Live security ledger of privilege escalations, card balance changes, and feature toggle adjustments.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {recentLogs.length === 0 ? (
+            <div className="text-center py-6 text-slate-500 text-sm flex items-center justify-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+              <span>All systems secure. No recent audit events logged.</span>
+            </div>
+          ) : (
+            <div className="divide-y divide-white/[0.04]">
+              {recentLogs.map((log, idx) => (
+                <div key={log.id || idx} className="py-3 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-2 h-2 rounded-full bg-orange-400" />
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {log.action?.replace(/_/g, ' ') || 'Admin Action'}
+                      </p>
+                      <p className="text-xs text-slate-400 font-mono">
+                        {log.admin_email || 'admin@rumbala.app'} • Target: {log.target_type || 'system'} ({log.target_id?.slice(0, 8) || 'general'})
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-xs text-slate-400 flex items-center gap-1 font-mono">
+                      <Clock className="w-3 h-3" />
+                      {log.created_at ? new Date(log.created_at).toLocaleTimeString() : 'Just now'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };

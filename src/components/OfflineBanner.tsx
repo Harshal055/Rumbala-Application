@@ -1,54 +1,77 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { StyleSheet, Text, View, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-    useSharedValue,
-    useAnimatedStyle,
-    withSpring,
-    withTiming,
-    Easing,
-} from 'react-native-reanimated';
 import { useNetworkStatus } from '../services/networkMonitor';
 
 export default function OfflineBanner() {
     const insets = useSafeAreaInsets();
     const { isOnline, wasOffline, clearWasOffline } = useNetworkStatus();
 
-    const translateY = useSharedValue(-80);
-    const opacity = useSharedValue(0);
+    const translateY = useRef(new Animated.Value(-80)).current;
+    const opacity = useRef(new Animated.Value(0)).current;
 
     const isVisible = !isOnline || wasOffline;
 
     useEffect(() => {
+        let dismissTimer: ReturnType<typeof setTimeout> | null = null;
+
         if (isVisible) {
-            translateY.value = withSpring(0, { damping: 15, stiffness: 180 });
-            opacity.value = withTiming(1, { duration: 250 });
+            Animated.parallel([
+                Animated.spring(translateY, {
+                    toValue: 0,
+                    damping: 15,
+                    mass: 1,
+                    stiffness: 180,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(opacity, {
+                    toValue: 1,
+                    duration: 250,
+                    useNativeDriver: true,
+                }),
+            ]).start();
 
             // If back online, auto dismiss after 2.5 seconds
             if (isOnline && wasOffline) {
-                const dismissTimer = setTimeout(() => {
-                    translateY.value = withTiming(-80, { duration: 300, easing: Easing.in(Easing.ease) });
-                    opacity.value = withTiming(0, { duration: 250 });
-                    const cleanupTimer = setTimeout(() => {
+                dismissTimer = setTimeout(() => {
+                    Animated.parallel([
+                        Animated.timing(translateY, {
+                            toValue: -80,
+                            duration: 300,
+                            useNativeDriver: true,
+                        }),
+                        Animated.timing(opacity, {
+                            toValue: 0,
+                            duration: 250,
+                            useNativeDriver: true,
+                        }),
+                    ]).start(() => {
                         clearWasOffline();
-                    }, 300);
-                    return () => clearTimeout(cleanupTimer);
+                    });
                 }, 2500);
-                return () => clearTimeout(dismissTimer);
             }
         } else {
-            translateY.value = withTiming(-80, { duration: 250 });
-            opacity.value = withTiming(0, { duration: 200 });
+            Animated.parallel([
+                Animated.timing(translateY, {
+                    toValue: -80,
+                    duration: 250,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(opacity, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+            ]).start();
         }
-    }, [isVisible, isOnline, wasOffline]);
 
-    const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: translateY.value }],
-        opacity: opacity.value,
-    }));
+        return () => {
+            if (dismissTimer) clearTimeout(dismissTimer);
+        };
+    }, [isVisible, isOnline, wasOffline, clearWasOffline, translateY, opacity]);
 
-    if (!isVisible && opacity.value === 0) {
+    if (!isVisible) {
         return null;
     }
 
@@ -61,7 +84,10 @@ export default function OfflineBanner() {
             style={[
                 styles.container,
                 { top: topPosition },
-                animatedStyle,
+                {
+                    transform: [{ translateY }],
+                    opacity,
+                },
             ]}
         >
             <View style={[styles.pill, isRestored ? styles.onlinePill : styles.offlinePill]}>

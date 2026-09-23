@@ -2,7 +2,7 @@
 export default {
   name: "Rumbala",
   slug: "rumbal",
-  version: "1.0.1",
+  version: "1.0.2",
   scheme: "rumbala",
   orientation: "portrait",
   userInterfaceStyle: "light",
@@ -16,6 +16,7 @@ export default {
   ios: {
     supportsTablet: false,
     bundleIdentifier: "com.andx.rumbala",
+    buildNumber: "2",
     icon: "./assets/icon.png",
     infoPlist: {
       NSCameraUsageDescription:
@@ -31,7 +32,7 @@ export default {
     predictiveBackGestureEnabled: false,
     package: "com.andx.rumbala",
     icon: "./assets/icon.png",
-    versionCode: 1,
+    versionCode: 2,
     googleServicesFile: "./google-services.json",
     adaptiveIcon: {
       foregroundImage: "./assets/icon.png",

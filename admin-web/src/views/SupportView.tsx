@@ -334,9 +334,16 @@ export const SupportView: React.FC = () => {
                           </span>
                         </div>
 
-                        <span className="text-[11px] text-slate-400 font-mono">
-                          {f.created_at ? new Date(f.created_at).toLocaleString() : '—'}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {f.message?.includes('[ACCOUNT DELETION') && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-500/20 text-rose-300 border border-rose-500/40 animate-pulse">
+                              🚨 Deletion Request
+                            </span>
+                          )}
+                          <span className="text-[11px] text-slate-400 font-mono">
+                            {f.created_at ? new Date(f.created_at).toLocaleString() : '—'}
+                          </span>
+                        </div>
                       </div>
 
                       {/* Feedback Message */}

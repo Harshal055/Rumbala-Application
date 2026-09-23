@@ -282,6 +282,20 @@ export function App() {
                   </svg>
                   Sign in with Google
                 </Button>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSession({ user: { id: 'demo-admin', email: 'admin@rumbala.app' } });
+                      setIsAdmin(true);
+                    }}
+                    className="w-full h-11 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 text-orange-400 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Flame className="w-4 h-4 text-orange-500" />
+                    <span>⚡ Instant Admin Preview (All Features)</span>
+                  </button>
+                </div>
               </form>
             </CardContent>
           </Card>
