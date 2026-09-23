@@ -106,6 +106,9 @@ export default function RootLayout() {
                     if (session?.user) {
                         if (store.userId !== session.user.id || !store.isAuthenticated) {
                             store.setUserId(session.user.id);
+                            if (session.user.email) {
+                                store.setUserEmail(session.user.email);
+                            }
                             await store.syncWithSupabase();
                         }
                     } else if (event === 'SIGNED_OUT') {
